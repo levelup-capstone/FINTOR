@@ -1,0 +1,42 @@
+services:
+  # 1. 데이터베이스 컨테이너 (PostgreSQL)
+  db:
+    container_name: fintor-db
+    image: postgres:15-alpine
+    env_file:
+      - .env
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: always
+
+  # 2. 백엔드 컨테이너 (FastAPI)
+  backend:
+    container_name: fintor-backend
+    build: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    env_file:
+      - .env
+    depends_on:
+      - db
+    restart: always
+
+  # 3. 프론트엔드 컨테이너 (React/Vite)
+  frontend:
+    container_name: fintor-frontend
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    restart: always
+
+volumes:
+  postgres_data:
