@@ -1,8 +1,10 @@
 from sqlalchemy import Column, Integer, String
 from database import Base
 
-class Item(Base):
-    __tablename__ = "items"
+class User(Base):
+    __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True)
+    kakao_id = Column(String, unique=True, index=True)
+    nickname = Column(String)
+    profile_image = Column(String, nullable=True)
