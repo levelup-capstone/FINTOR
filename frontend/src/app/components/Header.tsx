@@ -1,4 +1,45 @@
+import { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router';
+
 export function Header() {
+  const navigate = useNavigate();
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // localStorage에서 로그인 시 저장된 사용자 정보 읽기
+  const loginData = (() => {
+    try {
+      return JSON.parse(localStorage.getItem('loginResult') || 'null')?.data;
+    } catch {
+      return null;
+    }
+  })();
+  const nickname: string | null = loginData?.nickname ?? null;
+  const profileImage: string | null = loginData?.profileImage ?? null;
+
+  // 드롭다운 외부 클릭 시 닫기
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // 로그아웃: 백엔드 호출 → localStorage 초기화 → 로그인 페이지 이동
+  const handleLogout = async () => {
+    try {
+      await fetch('http://localhost:8000/api/auth/logout', { method: 'POST' });
+    } catch (e) {
+      // 백엔드 오류여도 클라이언트 로그아웃은 진행
+    } finally {
+      localStorage.clear();
+      navigate('/');
+    }
+  };
+
   return (
     <header className="docked full-width top-0 sticky z-50 bg-slate-50/60 dark:bg-slate-950/60 backdrop-blur-md">
       <div className="flex justify-between items-center w-full px-6 py-4 max-w-7xl mx-auto">
@@ -27,7 +68,6 @@ export function Header() {
             </a>
             <a
               className="text-slate-500 dark:text-slate-400 font-medium hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors px-3 py-1 rounded-lg"
-              href="#"
             >
               뉴스
             </a>
@@ -40,11 +80,44 @@ export function Header() {
             </span>
             <span className="absolute top-2 right-2 w-2 h-2 bg-error rounded-full"></span>
           </button>
-          <button className="p-2 rounded-full transition-all duration-200 hover:bg-slate-200 hover:scale-110 hover:shadow-md active:scale-95">
-            <span className="material-symbols-outlined text-on-surface-variant">
-              account_circle
-            </span>
-          </button>
+
+          {/* 프로필 버튼 + 드롭다운 */}
+          <div className="relative" ref={dropdownRef}>
+            <button
+              onClick={() => setDropdownOpen((prev) => !prev)}
+              className="p-0.5 rounded-full transition-all duration-200 hover:scale-110 hover:shadow-md active:scale-95 hover:ring-2 hover:ring-slate-300"
+            >
+              {profileImage ? (
+                <img
+                  src={profileImage}
+                  alt={nickname ?? '프로필'}
+                  className="w-8 h-8 rounded-full object-cover"
+                />
+              ) : (
+                <span className="material-symbols-outlined text-on-surface-variant">
+                  account_circle
+                </span>
+              )}
+            </button>
+
+            {/* 드롭다운 메뉴 */}
+            {dropdownOpen && (
+              <div className="absolute right-0 mt-2 w-40 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-100 dark:border-slate-700 overflow-hidden z-50">
+                {nickname && (
+                  <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700">
+                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 truncate">{nickname}</p>
+                  </div>
+                )}
+                <button
+                  onClick={handleLogout}
+                  className="w-full flex items-center gap-2 px-4 py-3 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                >
+                  <span className="material-symbols-outlined text-base">logout</span>
+                  로그아웃
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </header>

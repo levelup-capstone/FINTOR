@@ -1,17 +1,33 @@
 export function Sidebar() {
+  // localStorage에서 로그인 시 저장된 사용자 정보 읽기
+  const loginData = (() => {
+    try {
+      return JSON.parse(localStorage.getItem('loginResult') || 'null')?.data;
+    } catch {
+      return null;
+    }
+  })();
+  const nickname: string = loginData?.nickname ?? '사용자';
+  const profileImage: string | null = loginData?.profileImage ?? null;
+
   return (
     <aside className="hidden lg:flex flex-col w-64 space-y-6">
       <div className="bg-surface-container-lowest p-6 rounded-xl space-y-4 shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-full overflow-hidden">
-            <img 
-              alt="사용자 프로필" 
-              className="w-full h-full object-cover" 
-              src="https://images.unsplash.com/photo-1662109987933-44bf8a6e6871?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjbG9zZSUyMHVwJTIwcHJvZmlsZSUyMG9mJTIwYSUyMHByb2Zlc3Npb25hbCUyMGluJTIwYSUyMG1pbmltYWxpc3QlMjBzZXR0aW5nJTIwY2xlYW4lMjBsaW5lcyUyMGJyaWdodCUyMGFpcnklMjBmZWVsfGVufDF8fHx8MTc3NDU3OTU1Nnww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral" 
-            />
+          {/* 프로필 이미지: 카카오 사진 있으면 표시, 없으면 기본 아이콘 */}
+          <div className="w-12 h-12 rounded-full overflow-hidden flex items-center justify-center bg-slate-100">
+            {profileImage ? (
+              <img
+                src={profileImage}
+                alt={nickname}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <span className="material-symbols-outlined text-slate-400 text-4xl">account_circle</span>
+            )}
           </div>
           <div>
-            <p className="font-bold text-primary text-sm">고결한 투자자</p>
+            <p className="font-bold text-primary text-sm">{nickname}</p>
             <p className="text-xs text-on-surface-variant">Premium Member</p>
           </div>
         </div>
