@@ -1,11 +1,22 @@
 from pydantic import BaseModel
+from typing import Optional
 
-class ItemCreate(BaseModel):
-    name: str
+# 1. 프론트에서 받는 데이터 (인가 코드로 변경됨!)
+class KakaoLoginRequest(BaseModel):
+    code: str
 
-class ItemResponse(BaseModel):
-    id: int
-    name: str
+# 2. 로그인 완료 데이터 구조
+class LoginData(BaseModel):
+    accessToken: str
+    refreshToken: str
+    userId: int
+    nickname: str
+    profileImage: Optional[str] = None
+    isNewUser: bool
+    redirectUrl: str
 
-    class Config:
-        from_attributes = True
+# 3. 최종 응답 구조
+class LoginResponse(BaseModel):
+    success: bool
+    message: str
+    data: Optional[LoginData] = None
