@@ -13,7 +13,6 @@ import models, schemas, crud
 from database import engine, get_db
 from models import User, Attendance
 # DB 테이블 생성
-print("만들어져야 하는 테이블 : ", models.Base.metadata.tables.keys())
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Fintor Auth Server")
