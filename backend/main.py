@@ -1,22 +1,24 @@
 import os
 import jwt
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
+
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
 import models, schemas, crud
 from database import engine, get_db
-
+from models import User, Attendance
 # DB 테이블 생성
+print("만들어져야 하는 테이블 : ", models.Base.metadata.tables.keys())
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Fintor Auth Server")
 
 # --- [CORS 설정] ---
-# 프론트엔드(React)와의 원활한 통신을 위한 허용 정책 설정
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],
@@ -25,25 +27,46 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- [환경 변수 로드] ---
+# --- [환경 변수] ---
 JWT_SECRET_KEY = os.environ["JWT_SECRET_KEY"]
 KAKAO_REST_API_KEY = os.getenv("KAKAO_REST_API_KEY")
 KAKAO_CLIENT_SECRET = os.getenv("KAKAO_CLIENT_SECRET")
 KAKAO_REDIRECT_URI = os.getenv("KAKAO_REDIRECT_URI")
 
-# [유틸리티] 자체 서비스용 JWT 토큰 생성
-# 유저 ID를 기반으로 액세스 및 리프레시 토큰 발급
+# --- [JWT 생성] ---
 def create_jwt_token(user_id: int, expires_delta: timedelta):
     expire = datetime.utcnow() + expires_delta
     to_encode = {"sub": str(user_id), "exp": expire}
     return jwt.encode(to_encode, JWT_SECRET_KEY, algorithm="HS256")
 
-# [핵심 API] 카카오 소셜 로그인 엔드포인트
-# 인가 코드 -> 카카오 토큰 발급 -> 유저 정보 조회 -> DB 저장 -> 자체 토큰 발급 프로세스
+
+# --- [JWT 인증 - 핵심] ---
+security = HTTPBearer()
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+):
+    token = credentials.credentials
+    
+    try:
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=["HS256"])
+        user_id = int(payload.get("sub"))
+    except:
+        raise HTTPException(status_code=401, detail="토큰 오류")
+
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="유저 없음")
+    
+    return user
+
+
+# --- [카카오 로그인] ---
 @app.post("/api/auth/kakao/login", response_model=schemas.LoginResponse)
 def kakao_login(req: schemas.KakaoLoginRequest, db: Session = Depends(get_db)):
     
-    # 1. 카카오 서버에 Access Token 요청 (OAuth 2.0 Step 2)
     token_url = "https://kauth.kakao.com/oauth/token"
     token_payload = {
         "grant_type": "authorization_code",
@@ -54,39 +77,34 @@ def kakao_login(req: schemas.KakaoLoginRequest, db: Session = Depends(get_db)):
     }
     
     token_res = requests.post(token_url, data=token_payload)
-    
-    # 카카오 토큰 발급 실패 예외 처리
+
     if token_res.status_code != 200:
         error_detail = token_res.json()
-        print(f"🚨 Kakao Token Error: {error_detail}")
         return JSONResponse(status_code=400, content={
-            "success": False, 
-            "message": f"카카오 에러: {error_detail.get('error_description', 'Auth Failed')}", 
+            "success": False,
+            "message": f"카카오 에러: {error_detail.get('error_description', 'Auth Failed')}",
             "data": None
         })
-    
+
     kakao_access_token = token_res.json().get("access_token")
 
-    # 2. 카카오 사용자 정보 조회 API 호출
+    # 유저 정보 요청
     user_info_url = "https://kapi.kakao.com/v2/user/me"
     headers = {"Authorization": f"Bearer {kakao_access_token}"}
     user_res = requests.get(user_info_url, headers=headers)
-    
+
     if user_res.status_code != 200:
         return JSONResponse(status_code=401, content={
             "success": False, "message": "카카오 유저 정보 조회 실패", "data": None
         })
-    
+
     user_data = user_res.json()
     kakao_id = str(user_data.get("id"))
     properties = user_data.get("properties", {})
-    
-    # 유저 프로필 추출 (기본값 설정 포함)
+
     nickname = properties.get("nickname", "Unknown")
     profile_image = properties.get("profile_image", "")
 
-    # 3. 회원 가입 처리 및 DB 연동
-    # 가입 이력이 없다면 신규 생성, 있다면 기존 유저 정보 로드
     db_user = crud.get_user_by_kakao_id(db, kakao_id=kakao_id)
     is_new_user = False
 
@@ -94,12 +112,10 @@ def kakao_login(req: schemas.KakaoLoginRequest, db: Session = Depends(get_db)):
         is_new_user = True
         db_user = crud.create_user(db, kakao_id, nickname, profile_image)
 
-    # 4. 서비스 전용 자체 JWT 토큰 생성
-    # Access Token(2시간), Refresh Token(14일)
+    # JWT 발급
     service_access_token = create_jwt_token(db_user.id, timedelta(hours=2))
     service_refresh_token = create_jwt_token(db_user.id, timedelta(days=14))
 
-    # 신규/기존 유저 여부에 따른 응답 메시지 및 리다이렉트 경로 설정
     redirect_url = "/survey" if is_new_user else "/dashboard"
     msg = "회원가입 성공 (신규)" if is_new_user else "로그인 성공 (기존)"
 
@@ -117,11 +133,51 @@ def kakao_login(req: schemas.KakaoLoginRequest, db: Session = Depends(get_db)):
         }
     }
 
-# [API] 로그아웃 엔드포인트
-# 현재는 성공 응답만 반환하며, 실제 블랙리스트 등은 프론트엔드와 협의 후 추가 가능
+
+# --- [로그아웃] ---
 @app.post("/api/auth/logout")
 def logout():
     return {
-        "success": True, 
-        "message": "로그아웃 처리가 완료되었습니다."
+        "success": True,
+        "message": "로그아웃 처리 완료"
     }
+
+
+# --- [출석 체크 API ⭐] ---
+@app.post("/api/attendance/check")
+def check_attendance(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    today = date.today()
+
+    existing = db.query(models.Attendance).filter(
+        models.Attendance.user_id == current_user.id,
+        models.Attendance.date == today
+    ).first()
+
+    if existing:
+        return {"success": False, "message": "이미 출석함"}
+
+    attendance = models.Attendance(
+        user_id=current_user.id,
+        date=today
+    )
+
+    db.add(attendance)
+    db.commit()
+
+    return {"success": True, "message": "출석 완료"}
+
+
+# --- [출석 조회 API] ---
+@app.get("/api/attendance")
+def get_attendance(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    records = db.query(models.Attendance).filter(
+        models.Attendance.user_id == current_user.id
+    ).all()
+
+    return records
