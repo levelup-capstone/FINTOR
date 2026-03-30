@@ -23,7 +23,7 @@ export function KakaoCallback() {
           localStorage.setItem('accessToken', finalData.data.accessToken);
           localStorage.setItem('refreshToken', finalData.data.refreshToken);
           localStorage.setItem('loginResult', JSON.stringify(finalData));
-          navigate('/dashboard');
+          navigate('/dashboard', { replace: true });
         } else {
           throw new Error(finalData.message || 'Auth Failed');
         }
@@ -31,7 +31,7 @@ export function KakaoCallback() {
       .catch((err) => {
         console.error('Authentication Error:', err);
         alert(err.message);
-        navigate('/');
+        navigate('/', { replace: true });
       });
   }, []);
 
