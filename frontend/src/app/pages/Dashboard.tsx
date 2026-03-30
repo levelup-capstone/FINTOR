@@ -199,7 +199,7 @@ export function Dashboard() {
       {/* ─── 섹션 3: 실시간 시장 지수 ────────────────────────────────────────
           KOSPI, KOSDAQ, S&P500, NASDAQ, 비트코인, 환율을 그리드로 표시
           현재는 하드코딩된 더미 데이터 → 백엔드 연동 시 API로 교체 필요
-          상승은 text-error(빨강), 하락은 text-secondary(파랑)으로 구분
+          상승은 text-error(빨강), 하락은 text-blue-700(파랑)으로 구분
       ──────────────────────────────────────────────────────────────────────── */}
       <section className="space-y-4">
         <div className="flex justify-between items-end">
@@ -240,7 +240,7 @@ export function Dashboard() {
               <span className="text-xl font-black font-headline">
                 873.12
               </span>
-              <span className="text-[10px] font-bold text-secondary flex items-center">
+              <span className="text-[10px] font-bold text-blue-700 flex items-center">
                 <span
                   className="material-symbols-outlined text-xs"
                   style={{ fontVariationSettings: '"FILL" 1' }}
@@ -325,7 +325,7 @@ export function Dashboard() {
               <span className="text-xl font-black font-headline">
                 2,400
               </span>
-              <span className="text-[10px] font-bold text-secondary flex items-center">
+              <span className="text-[10px] font-bold text-blue-700 flex items-center">
                 <span
                   className="material-symbols-outlined text-xs"
                   style={{ fontVariationSettings: '"FILL" 1' }}
