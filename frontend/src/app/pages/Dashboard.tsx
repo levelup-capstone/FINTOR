@@ -323,7 +323,7 @@ export function Dashboard() {
             </p>
             <div className="flex items-baseline gap-2">
               <span className="text-xl font-black font-headline">
-                1,334.50
+                2,400
               </span>
               <span className="text-[10px] font-bold text-secondary flex items-center">
                 <span
