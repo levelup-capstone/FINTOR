@@ -23,7 +23,11 @@ export function KakaoCallback() {
           localStorage.setItem('accessToken', finalData.data.accessToken);
           localStorage.setItem('refreshToken', finalData.data.refreshToken);
           localStorage.setItem('loginResult', JSON.stringify(finalData));
-          navigate('/dashboard', { replace: true });
+          if (finalData.data.isNewUser) {
+            navigate('/survey', { replace: true });
+          } else {
+            navigate('/dashboard', { replace: true });
+          }
         } else {
           throw new Error(finalData.message || 'Auth Failed');
         }
