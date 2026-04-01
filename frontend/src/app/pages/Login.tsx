@@ -43,10 +43,11 @@ export function Login() {
           <div className="flex items-center justify-between">
             {/* 로고 */}
             <div className="flex items-center gap-2 sm:gap-3">
-              <div className="w-6 h-6 sm:w-7 sm:h-7 bg-white/20 backdrop-blur-sm rounded-lg flex items-center justify-center">
+              {/*<div className="w-6 h-6 sm:w-7 sm:h-7 bg-white/20 backdrop-blur-sm rounded-lg flex items-center justify-center">
                 <span className="text-white text-xs font-bold">F</span>
-              </div>
-              <span className="text-sm sm:text-base font-bold text-white">FINTO</span>
+              </div>*/}
+              <span className="text-2xl font-black text-[#ffffff] dark:text-white tracking-tighter font-headline">
+                  FINTO</span>
             </div>
 
             {/* 데스크톱 메뉴 */}
