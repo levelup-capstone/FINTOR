@@ -22,6 +22,8 @@ export default defineConfig({
 
   // Windows + Docker 환경에서 파일 변경 감지가 안 될 때 폴링으로 해결
   server: {
+    host: true,
+    port: 3000,
     watch: {
       usePolling: true,
       interval: 300,

@@ -4,6 +4,7 @@ import requests
 import time
 import yfinance as yf
 import finnhub
+from requests import Session as ReqSession
 from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import JSONResponse
@@ -43,6 +44,14 @@ FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 
 # Finnhub 클라이언트 초기화
 finnhub_client = finnhub.Client(api_key=FINNHUB_API_KEY)
+
+# yfinance 브라우저 세션 (Rate Limit 우회)
+yf_session = ReqSession()
+yf_session.headers.update({
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5",
+})
 
 
 # =====================================================================
@@ -243,30 +252,52 @@ YFINANCE_SYMBOLS = {
     "BTC_KRW":     "BTC-KRW",
 }
 
-def fetch_yfinance_quote(name: str, symbol: str) -> dict | None:
+def fetch_all_yfinance(symbols_map: dict) -> dict:
+    """yf.download()로 전체 심볼을 한 번에 배치 요청 (Rate Limit 최소화)"""
+    results = {}
     try:
-        time.sleep(0.5)
-        ticker = yf.Ticker(symbol)
-        hist = ticker.history(period="2d")
+        symbol_list = list(symbols_map.values())
+        name_by_symbol = {v: k for k, v in symbols_map.items()}
 
-        if hist.empty:
-            print(f"⚠️ yfinance [{name}] 데이터 없음")
-            return None
+        df = yf.download(
+            tickers=symbol_list,
+            period="5d",
+            group_by="ticker",
+            auto_adjust=True,
+            progress=False,
+            session=yf_session,
+        )
 
-        current = float(hist["Close"].iloc[-1])
-        prev    = float(hist["Close"].iloc[-2]) if len(hist) >= 2 else current
-        change_value = round(current - prev, 4)
-        change_rate  = round((change_value / prev * 100) if prev != 0 else 0, 2)
+        if df.empty:
+            print("⚠️ yfinance 배치 다운로드 결과 없음")
+            return results
 
-        return {
-            "price":        round(current, 4),
-            "change_value": change_value,
-            "change_rate":  change_rate,
-            "source":       "yfinance"
-        }
+        for symbol in symbol_list:
+            name = name_by_symbol.get(symbol)
+            if not name:
+                continue
+            try:
+                # 단일 심볼이면 df 자체가 OHLCV, 복수면 df[symbol]
+                hist = df[symbol] if len(symbol_list) > 1 else df
+                hist = hist.dropna(subset=["Close"])
+                if len(hist) < 1:
+                    print(f"⚠️ yfinance [{name}] 데이터 없음")
+                    continue
+                current = float(hist["Close"].iloc[-1])
+                prev    = float(hist["Close"].iloc[-2]) if len(hist) >= 2 else current
+                change_value = round(current - prev, 4)
+                change_rate  = round((change_value / prev * 100) if prev != 0 else 0, 2)
+                results[name] = {
+                    "price":        round(current, 4),
+                    "change_value": change_value,
+                    "change_rate":  change_rate,
+                    "source":       "yfinance"
+                }
+            except Exception as e:
+                print(f"🚨 yfinance [{name}] 파싱 오류: {str(e)}")
     except Exception as e:
-        print(f"🚨 yfinance [{name}] 오류: {str(e)}")
-        return None
+        print(f"🚨 yfinance 배치 오류: {str(e)}")
+    return results
 
 
 # =====================================================================
@@ -301,13 +332,11 @@ def collect_and_save_market_data():
                 all_results[name] = data
             time.sleep(0.05)
 
-        # 3. yfinance: 나머지 + Finnhub fallback
-        for name, symbol in YFINANCE_SYMBOLS.items():
-            if name in all_results and all_results[name].get("source") == "finnhub":
-                continue
-            data = fetch_yfinance_quote(name, symbol)
-            if data:
-                all_results[name] = data
+        # 3. yfinance: 나머지 + Finnhub fallback (배치 요청)
+        yf_needed = {k: v for k, v in YFINANCE_SYMBOLS.items()
+                     if not (k in all_results and all_results[k].get("source") == "finnhub")}
+        yf_results = fetch_all_yfinance(yf_needed)
+        all_results.update(yf_results)
 
         # DB 저장 (upsert 방식 - 있으면 업데이트, 없으면 삽입)
         for name, data in all_results.items():

@@ -23,7 +23,7 @@ export function Dashboard() {
       const json = await res.json();
       if (json.success) {
         setMarketData(json.data);
-        setMarketUpdatedAt(json.data.updated_at ?? null);
+        setMarketUpdatedAt(json.updated_at ?? null);
       } else {
         setMarketError(true);
       }
