@@ -1,65 +1,48 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 
+// API enum → 한국어 자산명
 const assetNameMap: Record<string, string> = {
-  stock: '주식',
-  coin: '코인',
-  krw: '원화',
-  gold: '금',
+  'growth-stock': '성장주',
+  'etf': 'ETF',
+  'bluechip-stock': '배당 우량주',
+  'deposit': '예적금',
+  'bonds': '채권',
+  'coin': '코인',
+  'krw': '원화',
+  'gold': '금',
 };
 
-const portfolioTypes = [
-  {
-    id: 'stable',
-    name: '안정형',
-    assets: '배당형 우량주, 예적금, 채권, ETF, 달러, 원화',
-    chartColor: '#3b82f6',
-    chartData: [
-      { name: 'stock', value: 45, color: '#1A237E' },
-      { name: 'coin', value: 25, color: '#7C4DFF' },
-      { name: 'krw', value: 15, color: '#90A4AE' },
-      { name: 'gold', value: 15, color: '#FFB300' },
-    ],
-  },
-  {
-    id: 'risk-neutral',
-    name: '위험 중립형',
-    assets: 'ETF, 배당형 우량주, 성장주, 달러, 채권, 원화',
-    chartColor: '#eab308',
-    chartData: [
-      { name: 'stock', value: 45, color: '#1A237E' },
-      { name: 'coin', value: 25, color: '#7C4DFF' },
-      { name: 'krw', value: 15, color: '#90A4AE' },
-      { name: 'gold', value: 15, color: '#FFB300' },
-    ],
-  },
-  {
-    id: 'aggressive',
-    name: '공격 투자형',
-    assets: '성장주, 비트코인, ETF, 달러, 채권, 원화',
-    chartColor: '#ef4444',
-    chartData: [
-      { name: 'stock', value: 45, color: '#1A237E' },
-      { name: 'coin', value: 25, color: '#7C4DFF' },
-      { name: 'krw', value: 15, color: '#90A4AE' },
-      { name: 'gold', value: 15, color: '#FFB300' },
-    ],
-  },
-];
+// 도넛 차트 자산별 색상
+const assetColorMap: Record<string, string> = {
+  'growth-stock': '#1A237E',
+  'etf': '#3949AB',
+  'bluechip-stock': '#5C6BC0',
+  'deposit': '#90A4AE',
+  'bonds': '#78909C',
+  'coin': '#7C4DFF',
+  'krw': '#B0BEC5',
+  'gold': '#FFB300',
+};
+
+// 포트폴리오 카드 뱃지 색상 (3개 고정)
+const portfolioBadgeColors = ['#3b82f6', '#eab308', '#ef4444'];
+
+// 백엔드 응답 타입
+type ApiAllocation = { asset: string; ratio: number };
+type ApiPortfolio = { id: string; name: string; allocations: ApiAllocation[] };
 
 const questions = [
   { id: 'age', title: '연령대를 선택해주세요', options: ['20대 미만','20대', '30대', '40대', '50대', '60대 이상'] },
   { id: 'experience', title: '투자 경력은 얼마나 되시나요?', options: ['없음', '6개월 미만', '6개월-1년', '1-3년', '3-5년', '5년 이상'] },
   { id: 'period', title: '선호하는 투자 기간은?', options: ['단기 (6개월 미만)', '중단기 (6개월-3년)', '중장기 (3년-5년)', '장기 (5년 이상)'] },
   { id: 'assetType', title: '선호하는 자산 종류는?', options: ['성장주', 'ETF', '배당형 우량주', '예적금', '채권', '코인', '현금', '금'] },
-  { id: 'risk', title: '감수 가능한 리스크 정도는?', options: ['원금 손실이 거의 없어야 마음이 편하다.', '약간의 수익은 원하지만 손실엔 민감', '높은 수익을 위해 위험도 일부 감수', '변동성에 대한 두려움이 거의 없고 공격적으로 접근'] },
+  { id: 'risk', title: '감수 가능한 리스크 정도는?', options: ['원금 손실이 거의 없어야 마음이 편하다.', '약간의 수익은 원하지만 손실엔 민감하다.', '높은 수익을 위해 위험도 일부 감수할 수 있다.', '변동성에 대한 두려움이 거의 없고 공격적으로 접근하는 편이다.'] },
   { id: 'investAmount', title: '투자 가능한 자산 규모는?', options: ['500만원 미만', '500만원-1천만원', '1천만원-5천만원', '5천만원-1억', '1억-3억', '3억 이상'] },
   { id: 'income', title: '월 소득 수준은?', options: ['200만원 미만', '200-400만원', '400-600만원', '600-800만원', '800-1000만원', '1000만원 이상'] },
   { id: 'goal', title: '투자 목적은 무엇인가요?', options: ['노후 준비', '자산 증식', '자녀 교육', '주택 마련', '여유 자금 운용', '기타'] },
 ];
-
-type Portfolio = typeof portfolioTypes[number];
 
 export function Survey() {
   const navigate = useNavigate();
@@ -70,7 +53,9 @@ export function Survey() {
   const [showIntro, setShowIntro] = useState(true);
   const [isCompleted, setIsCompleted] = useState(false);
   const [showPortfolioSelection, setShowPortfolioSelection] = useState(false);
-  const [selectedPortfolio, setSelectedPortfolio] = useState<Portfolio | null>(null);
+  const [selectedPortfolio, setSelectedPortfolio] = useState<ApiPortfolio | null>(null);
+  const [apiPortfolios, setApiPortfolios] = useState<ApiPortfolio[]>([]);
+  const [isLoadingPortfolios, setIsLoadingPortfolios] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem('surveyAnswers');
@@ -124,15 +109,12 @@ export function Survey() {
     setAnswers({});
     setSelectedOption(null);
     setSelectedPortfolio(null);
+    setApiPortfolios([]);
     localStorage.removeItem('surveyAnswers');
     localStorage.removeItem('selectedPortfolio');
   };
 
-  const handlePortfolioSelect = (portfolio: Portfolio) => {
-    setSelectedPortfolio(portfolio);
-    localStorage.setItem('selectedPortfolio', JSON.stringify(portfolio));
-  };
-
+  // ── API enum 매핑 ─────────────────────────────────────────────────────────
   const ageGroupMap: Record<string, string> = {
     '20대 미만': 'under-20',
     '20대': '20y',
@@ -167,9 +149,9 @@ export function Survey() {
   };
   const riskMap: Record<string, string> = {
     '원금 손실이 거의 없어야 마음이 편하다.': 'v-low',
-    '약간의 수익은 원하지만 손실엔 민감': 'low',
-    '높은 수익을 위해 위험도 일부 감수': 'high',
-    '변동성에 대한 두려움이 거의 없고 공격적으로 접근': 'v-high',
+    '약간의 수익은 원하지만 손실엔 민감하다.': 'low',
+    '높은 수익을 위해 위험도 일부 감수할 수 있다.': 'high',
+    '변동성에 대한 두려움이 거의 없고 공격적으로 접근하는 편이다.': 'v-high',
   };
   const investAmountMap: Record<string, string> = {
     '500만원 미만': 'under-500',
@@ -196,10 +178,10 @@ export function Survey() {
     '기타': 'others',
   };
 
-  const handleConfirm = async () => {
-    if (!selectedPortfolio) return;
+  // 설문 payload 빌드
+  const buildPayload = () => {
     const assetTypeRaw = answers['assetType'];
-    const payload = {
+    return {
       age_group: ageGroupMap[answers['age'] as string],
       investment_experience: experienceMap[answers['experience'] as string],
       preferred_period: periodMap[answers['period'] as string],
@@ -210,19 +192,85 @@ export function Survey() {
       monthly_income: incomeMap[answers['income'] as string],
       investment_goal: goalMap[answers['goal'] as string],
     };
+  };
+
+  // ── 목업 데이터 (백엔드 미구현 시 테스트용) ──────────────────────────────
+  const USE_MOCK = true; // 백엔드 준비되면 false로 변경
+
+  const mockPortfolios: ApiPortfolio[] = [
+    {
+      id: 'stable',
+      name: '안정형',
+      allocations: [
+        { asset: 'deposit', ratio: 35 },
+        { asset: 'bonds', ratio: 30 },
+        { asset: 'bluechip-stock', ratio: 20 },
+        { asset: 'gold', ratio: 10 },
+        { asset: 'krw', ratio: 5 },
+      ],
+    },
+    {
+      id: 'risk-neutral',
+      name: '위험중립형',
+      allocations: [
+        { asset: 'etf', ratio: 30 },
+        { asset: 'bluechip-stock', ratio: 25 },
+        { asset: 'growth-stock', ratio: 20 },
+        { asset: 'bonds', ratio: 15 },
+        { asset: 'krw', ratio: 10 },
+      ],
+    },
+    {
+      id: 'aggressive',
+      name: '공격투자형',
+      allocations: [
+        { asset: 'growth-stock', ratio: 40 },
+        { asset: 'coin', ratio: 25 },
+        { asset: 'etf', ratio: 20 },
+        { asset: 'gold', ratio: 10 },
+        { asset: 'krw', ratio: 5 },
+      ],
+    },
+  ];
+
+  // 포트폴리오 보기 버튼 → API 호출 후 포트폴리오 선택 화면으로 이동
+  const handleShowPortfolios = async () => {
+    setIsLoadingPortfolios(true);
     try {
+      if (USE_MOCK) {
+        // 목업: 실제 API 대신 0.8초 딜레이 후 더미 데이터 반환
+        await new Promise((r) => setTimeout(r, 800));
+        setApiPortfolios(mockPortfolios);
+        setShowPortfolioSelection(true);
+        return;
+      }
       const token = localStorage.getItem('accessToken');
-      await fetch('http://localhost:8000/api/survey', {
+      const res = await fetch('http://localhost:8000/api/survey', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(buildPayload()),
       });
+      const data = await res.json();
+      if (data.success && data.data?.portfolios) {
+        setApiPortfolios(data.data.portfolios);
+        setShowPortfolioSelection(true);
+      } else {
+        console.error('포트폴리오 응답 오류:', data);
+      }
     } catch (e) {
-      // 백엔드 오류여도 대시보드로 이동
+      console.error('포트폴리오 불러오기 실패:', e);
+    } finally {
+      setIsLoadingPortfolios(false);
     }
+  };
+
+  // 포트폴리오 선택 확인 → 대시보드 이동
+  const handleConfirm = () => {
+    if (!selectedPortfolio) return;
+    localStorage.setItem('selectedPortfolio', JSON.stringify(selectedPortfolio));
     localStorage.removeItem('surveyAnswers');
     navigate('/dashboard', { replace: true });
   };
@@ -250,68 +298,81 @@ export function Survey() {
 
             {/* 포트폴리오 카드 */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5 mb-8">
-              {portfolioTypes.map((portfolio) => (
-                <button
-                  key={portfolio.id}
-                  onClick={() => handlePortfolioSelect(portfolio)}
-                  className={`group relative p-6 md:p-7 rounded-xl border-2 transition-all duration-300 text-left min-h-[380px] flex flex-col hover:scale-[1.03] hover:shadow-xl ${
-                    selectedPortfolio?.id === portfolio.id
-                      ? 'border-[#1A237E] bg-surface-container-low shadow-xl scale-[1.03]'
-                      : 'border-outline-variant/30 bg-surface-container-low hover:border-[#1A237E]/40'
-                  }`}
-                >
-                  <div className={`absolute top-3 right-3 w-5 h-5 rounded-full border-2 transition-all flex items-center justify-center ${
-                    selectedPortfolio?.id === portfolio.id
-                      ? 'border-[#1A237E] bg-[#1A237E]'
-                      : 'border-outline-variant group-hover:border-[#1A237E]'
-                  }`}>
-                    {selectedPortfolio?.id === portfolio.id && (
-                      <span className="material-symbols-outlined text-white text-xs" style={{ fontVariationSettings: '"FILL" 1, "wght" 700' }}>check</span>
-                    )}
-                  </div>
+              {apiPortfolios.map((portfolio, idx) => {
+                const chartData = portfolio.allocations.map((a) => ({
+                  name: a.asset,
+                  value: a.ratio,
+                  color: assetColorMap[a.asset] ?? '#90A4AE',
+                }));
+                const badgeColor = portfolioBadgeColors[idx] ?? '#3b82f6';
+                const assetNames = portfolio.allocations
+                  .map((a) => assetNameMap[a.asset] ?? a.asset)
+                  .join(', ');
+                const isSelected = selectedPortfolio?.id === portfolio.id;
 
-                  <div className="inline-flex items-center justify-center px-3 py-1.5 rounded-full mb-5 text-white font-bold text-sm shadow-sm" style={{ backgroundColor: portfolio.chartColor }}>
-                    {portfolio.name}
-                  </div>
-
-                  <div className="flex items-center justify-center mb-6 flex-grow relative">
-                    {/* 클릭(선택) 시 범례 오버레이 고정 */}
-                    {selectedPortfolio?.id === portfolio.id && (
-                      <div className="absolute inset-0 flex items-center justify-center z-10">
-                        <div className="bg-white/95 dark:bg-slate-800/95 rounded-xl shadow-lg border border-outline-variant/20 px-4 py-3 space-y-1.5">
-                          {portfolio.chartData.map((entry) => (
-                            <div key={entry.name} className="flex items-center gap-2">
-                              <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: entry.color }} />
-                              <span className="text-xs font-bold text-on-surface-variant w-10">{assetNameMap[entry.name]}</span>
-                              <span className="text-xs font-black text-[#1A237E]">{entry.value}%</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    <div className={`w-40 h-40 md:w-44 md:h-44 transition-transform duration-300 group-hover:scale-110 ${selectedPortfolio?.id === portfolio.id ? 'scale-110' : ''}`}>
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie data={portfolio.chartData} cx="50%" cy="50%" innerRadius="55%" outerRadius="90%" startAngle={90} endAngle={-270} dataKey="value">
-                            {portfolio.chartData.map((entry, index) => (
-                              <Cell key={index} fill={entry.color} />
-                            ))}
-                          </Pie>
-                          <Tooltip
-                            formatter={(value, name) => [`${value}%`, assetNameMap[name as string] ?? name]}
-                            contentStyle={{ borderRadius: '8px', fontSize: '12px' }}
-                          />
-                        </PieChart>
-                      </ResponsiveContainer>
+                return (
+                  <button
+                    key={portfolio.id}
+                    onClick={() => setSelectedPortfolio(portfolio)}
+                    className={`group relative p-6 md:p-7 rounded-xl border-2 transition-all duration-300 text-left min-h-[380px] flex flex-col hover:scale-[1.03] hover:shadow-xl ${
+                      isSelected
+                        ? 'border-[#1A237E] bg-surface-container-low shadow-xl scale-[1.03]'
+                        : 'border-outline-variant/30 bg-surface-container-low hover:border-[#1A237E]/40'
+                    }`}
+                  >
+                    {/* 선택 체크 */}
+                    <div className={`absolute top-3 right-3 w-5 h-5 rounded-full border-2 transition-all flex items-center justify-center ${
+                      isSelected
+                        ? 'border-[#1A237E] bg-[#1A237E]'
+                        : 'border-outline-variant group-hover:border-[#1A237E]'
+                    }`}>
+                      {isSelected && (
+                        <span className="material-symbols-outlined text-white text-xs" style={{ fontVariationSettings: '"FILL" 1, "wght" 700' }}>check</span>
+                      )}
                     </div>
-                  </div>
 
-                  <div className="pt-4 border-t border-outline-variant/30 mt-auto">
-                    <p className="text-xs font-bold text-on-surface-variant mb-1.5 uppercase tracking-wide">구성 금융 자산</p>
-                    <p className="text-sm md:text-base text-[#1A237E] dark:text-indigo-200 font-bold leading-snug">{portfolio.assets}</p>
-                  </div>
-                </button>
-              ))}
+                    {/* 포트폴리오 이름 뱃지 */}
+                    <div className="inline-flex items-center justify-center px-3 py-1.5 rounded-full mb-5 text-white font-bold text-sm shadow-sm" style={{ backgroundColor: badgeColor }}>
+                      {portfolio.name}
+                    </div>
+
+                    {/* 도넛 차트 + 범례 */}
+                    <div className="flex items-center justify-center mb-6 flex-grow relative">
+                      {/* 클릭 시 범례 오버레이 고정 */}
+                      {isSelected && (
+                        <div className="absolute inset-0 flex items-center justify-center z-10">
+                          <div className="bg-white/95 dark:bg-slate-800/95 rounded-xl shadow-lg border border-outline-variant/20 px-6 py-4 space-y-2.5">
+                            {chartData.map((entry) => (
+                              <div key={entry.name} className="flex items-center gap-3">
+                                <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: entry.color }} />
+                                <span className="text-sm font-bold text-on-surface-variant w-20">{assetNameMap[entry.name] ?? entry.name}</span>
+                                <span className="text-sm font-black text-[#1A237E]">{entry.value}%</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      <div className={`w-40 h-40 md:w-44 md:h-44 transition-transform duration-300 group-hover:scale-110 ${isSelected ? 'scale-110' : ''}`}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie data={chartData} cx="50%" cy="50%" innerRadius="55%" outerRadius="90%" startAngle={90} endAngle={-270} dataKey="value">
+                              {chartData.map((entry, index) => (
+                                <Cell key={index} fill={entry.color} />
+                              ))}
+                            </Pie>
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+
+                    {/* 구성 자산 */}
+                    <div className="pt-4 border-t border-outline-variant/30 mt-auto">
+                      <p className="text-xs font-bold text-on-surface-variant mb-1.5 uppercase tracking-wide">구성 금융 자산</p>
+                      <p className="text-sm md:text-base text-[#1A237E] dark:text-indigo-200 font-bold leading-snug">{assetNames}</p>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
 
             {/* 버튼 */}
@@ -397,11 +458,25 @@ export function Survey() {
                   다시 시작
                 </button>
                 <button
-                  onClick={() => setShowPortfolioSelection(true)}
-                  className="w-full md:w-auto px-6 py-2.5 rounded-lg font-bold text-sm md:text-base transition-all duration-200 flex items-center justify-center gap-2 bg-[#1A237E] text-white hover:bg-[#1A237E]/90 hover:scale-105 hover:shadow-[0_0_20px_rgba(26,35,126,0.3)] hover:gap-3 active:scale-95"
+                  onClick={handleShowPortfolios}
+                  disabled={isLoadingPortfolios}
+                  className={`w-full md:w-auto px-6 py-2.5 rounded-lg font-bold text-sm md:text-base transition-all duration-200 flex items-center justify-center gap-2 ${
+                    isLoadingPortfolios
+                      ? 'bg-[#1A237E]/60 text-white cursor-not-allowed'
+                      : 'bg-[#1A237E] text-white hover:bg-[#1A237E]/90 hover:scale-105 hover:shadow-[0_0_20px_rgba(26,35,126,0.3)] hover:gap-3 active:scale-95'
+                  }`}
                 >
-                  <span className="material-symbols-outlined text-base">bar_chart</span>
-                  설문 결과에 따른 추천 포트폴리오 보기
+                  {isLoadingPortfolios ? (
+                    <>
+                      <span className="material-symbols-outlined text-base animate-spin">progress_activity</span>
+                      불러오는 중...
+                    </>
+                  ) : (
+                    <>
+                      <span className="material-symbols-outlined text-base">bar_chart</span>
+                      설문 결과에 따른 추천 포트폴리오 보기
+                    </>
+                  )}
                 </button>
               </div>
             </div>
