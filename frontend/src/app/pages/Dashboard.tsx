@@ -1,10 +1,75 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { DonutChart } from "../components/DonutChart";
 
 export function Dashboard() {
   // 현재 호버된 자산 항목을 추적 (도넛 차트와 자산 카드 간 연동에 사용)
   // null이면 아무것도 강조 안 됨, 'stock'/'coin'/'krw'/'gold' 중 하나면 해당 항목 강조
   const [hoveredAsset, setHoveredAsset] = useState<string | null>(null);
+
+  type IndexItem = { price: number; change_rate: number; change_value: number; source: string };
+  const [marketData, setMarketData] = useState<Record<string, IndexItem> | null>(null);
+  const [marketLoading, setMarketLoading] = useState(true);
+  const [marketError, setMarketError] = useState(false);
+  const [marketUpdatedAt, setMarketUpdatedAt] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState('domestic');
+
+  const fetchMarket = async () => {
+    setMarketLoading(true);
+    setMarketError(false);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
+    try {
+      const res = await fetch('http://localhost:8000/api/v1/market/indices', { signal: controller.signal });
+      const json = await res.json();
+      if (json.success) {
+        setMarketData(json.data);
+        setMarketUpdatedAt(json.data.updated_at ?? null);
+      } else {
+        setMarketError(true);
+      }
+    } catch (e) {
+      console.error('시장 지수 조회 실패:', e);
+      setMarketError(true);
+    } finally {
+      clearTimeout(timeoutId);
+      setMarketLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchMarket(); }, []);
+
+  const formatPrice = (key: string, price: number): string => {
+    if (key === 'BTC_KRW') return `${(price / 10000).toLocaleString('ko-KR', { maximumFractionDigits: 0 })}만`;
+    if (['USD_KRW','JPY_KRW','EUR_KRW'].includes(key)) return price.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const formatUpdatedAt = (iso: string): string => {
+    const diff = Math.floor((Date.now() - new Date(iso + 'Z').getTime()) / 1000 / 60);
+    if (diff < 1) return '방금 전';
+    return `${diff}분 전`;
+  };
+
+  const INDEX_LABEL: Record<string, string> = {
+    KOSPI: 'KOSPI', KOSDAQ: 'KOSDAQ', VKOSPI: 'VKOSPI',
+    KRX200IT: 'KRX IT', KRXHEALTH: 'KRX 헬스케어', BBIG: 'BBIG',
+    SP500: 'S&P 500', NASDAQ100: 'NASDAQ 100', DOW30: '다우 30',
+    SOX: '반도체 (SOX)', NBI: 'NBI', FANGPLUS: 'FANG+', VIX: 'VIX', US10Y: '미국 10년물',
+    NIKKEI225: '니케이 225', HANSENG: '항셍', SSE: '상해종합', EUROSTOXX50: '유로스톡스 50',
+    USD_KRW: 'USD/KRW', JPY_KRW: 'JPY/KRW', EUR_KRW: 'EUR/KRW',
+    DXY: '달러 인덱스', USD_JPY: 'USD/JPY', EUR_USD: 'EUR/USD',
+    WTI: 'WTI 원유', GOLD: '금', SILVER: '은', COPPER: '구리', NATGAS: '천연가스',
+    BTC_KRW: '비트코인',
+  };
+
+  const CATEGORIES = [
+    { key: 'domestic',  label: '국내',       keys: ['KOSPI','KOSDAQ','VKOSPI','KRX200IT','KRXHEALTH','BBIG'] },
+    { key: 'us',        label: '미국',       keys: ['SP500','NASDAQ100','DOW30','SOX','NBI','FANGPLUS','VIX','US10Y'] },
+    { key: 'asia',      label: '아시아·유럽', keys: ['NIKKEI225','HANSENG','SSE','EUROSTOXX50'] },
+    { key: 'fx',        label: '환율',       keys: ['USD_KRW','JPY_KRW','EUR_KRW','DXY','USD_JPY','EUR_USD'] },
+    { key: 'commodity', label: '원자재',     keys: ['WTI','GOLD','SILVER','COPPER','NATGAS'] },
+    { key: 'crypto',    label: '암호화폐',   keys: ['BTC_KRW'] },
+  ];
 
   return (
     <div className="flex-1 space-y-8">
@@ -196,146 +261,92 @@ export function Dashboard() {
         </button>
       </section>
 
-      {/* ─── 섹션 3: 실시간 시장 지수 ────────────────────────────────────────
-          KOSPI, KOSDAQ, S&P500, NASDAQ, 비트코인, 환율을 그리드로 표시
-          현재는 하드코딩된 더미 데이터 → 백엔드 연동 시 API로 교체 필요
-          상승은 text-error(빨강), 하락은 text-blue-700(파랑)으로 구분
-      ──────────────────────────────────────────────────────────────────────── */}
+      {/* ─── 섹션 3: 실시간 시장 지수 ──────────────────────────────────────── */}
       <section className="space-y-4">
         <div className="flex justify-between items-end">
-          <h2 className="text-xl font-extrabold text-primary font-headline">
-            실시간 시장 지수
-          </h2>
+          <h2 className="text-xl font-extrabold text-primary font-headline">실시간 시장 지수</h2>
           <span className="text-xs text-on-surface-variant font-medium">
-            업데이트: 5분 전
+            {marketLoading
+              ? '데이터 로딩 중... (첫 로드는 약 20~30초 소요)'
+              : marketError
+              ? '데이터 불러오기 실패'
+              : marketUpdatedAt
+              ? `업데이트: ${formatUpdatedAt(marketUpdatedAt)}`
+              : '업데이트 정보 없음'}
           </span>
         </div>
+
+        {/* 카테고리 탭 */}
+        {!marketLoading && !marketError && (
+          <div className="flex gap-1 flex-wrap">
+            {CATEGORIES.map((cat) => (
+              <button
+                key={cat.key}
+                onClick={() => setActiveTab(cat.key)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  activeTab === cat.key
+                    ? 'bg-[#1A237E] text-white'
+                    : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-lowest'
+                }`}
+              >
+                {cat.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* 카드 그리드 */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          {/* KOSPI */}
-          <div className="bg-surface-container-low p-5 rounded-xl transition-all hover:bg-surface-container-lowest cursor-default">
-            <p className="text-xs font-bold text-on-surface-variant mb-1">
-              KOSPI
-            </p>
-            <div className="flex items-baseline gap-2">
-              <span className="text-xl font-black font-headline">
-                2,682.41
-              </span>
-              <span className="text-[10px] font-bold text-error flex items-center">
-                <span
-                  className="material-symbols-outlined text-xs"
-                  style={{ fontVariationSettings: '"FILL" 1' }}
-                >
-                  arrow_drop_up
-                </span>
-                0.45%
-              </span>
+          {marketError ? (
+            <div className="col-span-2 md:col-span-3 flex flex-col items-center justify-center gap-3 py-8">
+              <div className="flex items-center gap-2 text-sm font-bold text-on-surface-variant">
+                <span className="material-symbols-outlined text-base">wifi_off</span>
+                데이터를 불러오지 못했습니다.
+              </div>
+              <button
+                onClick={fetchMarket}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#1A237E] text-white text-sm font-bold hover:bg-[#1A237E]/90 active:scale-95 transition-all"
+              >
+                <span className="material-symbols-outlined text-base">refresh</span>
+                다시 시도
+              </button>
             </div>
-          </div>
-          {/* KOSDAQ */}
-          <div className="bg-surface-container-low p-5 rounded-xl transition-all hover:bg-surface-container-lowest cursor-default">
-            <p className="text-xs font-bold text-on-surface-variant mb-1">
-              KOSDAQ
-            </p>
-            <div className="flex items-baseline gap-2">
-              <span className="text-xl font-black font-headline">
-                873.12
-              </span>
-              <span className="text-[10px] font-bold text-blue-700 flex items-center">
-                <span
-                  className="material-symbols-outlined text-xs"
-                  style={{ fontVariationSettings: '"FILL" 1' }}
-                >
-                  arrow_drop_down
-                </span>
-                0.12%
-              </span>
-            </div>
-          </div>
-          {/* S&P 500 */}
-          <div className="bg-surface-container-low p-5 rounded-xl transition-all hover:bg-surface-container-lowest cursor-default">
-            <p className="text-xs font-bold text-on-surface-variant mb-1">
-              S&amp;P 500
-            </p>
-            <div className="flex items-baseline gap-2">
-              <span className="text-xl font-black font-headline">
-                5,117.08
-              </span>
-              <span className="text-[10px] font-bold text-error flex items-center">
-                <span
-                  className="material-symbols-outlined text-xs"
-                  style={{ fontVariationSettings: '"FILL" 1' }}
-                >
-                  arrow_drop_up
-                </span>
-                1.12%
-              </span>
-            </div>
-          </div>
-          {/* NASDAQ */}
-          <div className="bg-surface-container-low p-5 rounded-xl transition-all hover:bg-surface-container-lowest cursor-default">
-            <p className="text-xs font-bold text-on-surface-variant mb-1">
-              NASDAQ
-            </p>
-            <div className="flex items-baseline gap-2">
-              <span className="text-xl font-black font-headline">
-                16,085.11
-              </span>
-              <span className="text-[10px] font-bold text-error flex items-center">
-                <span
-                  className="material-symbols-outlined text-xs"
-                  style={{ fontVariationSettings: '"FILL" 1' }}
-                >
-                  arrow_drop_up
-                </span>
-                1.54%
-              </span>
-            </div>
-          </div>
-          {/* 비트코인 (CRYPTO 뱃지로 일반 지수와 구분) */}
-          <div className="bg-surface-container-low p-5 rounded-xl transition-all hover:bg-surface-container-lowest cursor-default">
-            <div className="flex justify-between mb-1">
-              <p className="text-xs font-bold text-on-surface-variant">
-                비트코인
-              </p>
-              <span className="px-2 py-0.5 rounded bg-tertiary text-white text-[8px] font-bold">
-                CRYPTO
-              </span>
-            </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-xl font-black font-headline">
-                96.4M
-              </span>
-              <span className="text-[10px] font-bold text-error flex items-center">
-                <span
-                  className="material-symbols-outlined text-xs"
-                  style={{ fontVariationSettings: '"FILL" 1' }}
-                >
-                  arrow_drop_up
-                </span>
-                2.3%
-              </span>
-            </div>
-          </div>
-          {/* 환율 (USD/KRW) */}
-          <div className="bg-surface-container-low p-5 rounded-xl transition-all hover:bg-surface-container-lowest cursor-default">
-            <p className="text-xs font-bold text-on-surface-variant mb-1">
-              환율 (USD/KRW)
-            </p>
-            <div className="flex items-baseline gap-2">
-              <span className="text-xl font-black font-headline">
-                2,400
-              </span>
-              <span className="text-[10px] font-bold text-blue-700 flex items-center">
-                <span
-                  className="material-symbols-outlined text-xs"
-                  style={{ fontVariationSettings: '"FILL" 1' }}
-                >
-                  arrow_drop_down
-                </span>
-                0.05%
-              </span>
-            </div>
-          </div>
+          ) : marketLoading ? (
+            Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="bg-surface-container-low p-5 rounded-xl animate-pulse">
+                <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-16 mb-3" />
+                <div className="h-6 bg-slate-200 dark:bg-slate-700 rounded w-24" />
+              </div>
+            ))
+          ) : (
+            (CATEGORIES.find((c) => c.key === activeTab)?.keys ?? []).map((key) => {
+              const item = marketData?.[key];
+              const isUp = item ? item.change_rate >= 0 : true;
+              return (
+                <div key={key} className="bg-surface-container-low p-5 rounded-xl transition-all hover:bg-surface-container-lowest cursor-default">
+                  <p className="text-xs font-bold text-on-surface-variant mb-1">{INDEX_LABEL[key] ?? key}</p>
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <span className="text-xl font-black font-headline">
+                      {item ? formatPrice(key, item.price) : '—'}
+                    </span>
+                    {item && (
+                      <div className={`flex flex-col text-[10px] font-bold ${isUp ? 'text-error' : 'text-blue-700'}`}>
+                        <span className="flex items-center">
+                          <span className="material-symbols-outlined text-xs" style={{ fontVariationSettings: '"FILL" 1' }}>
+                            {isUp ? 'arrow_drop_up' : 'arrow_drop_down'}
+                          </span>
+                          {Math.abs(item.change_rate).toFixed(2)}%
+                        </span>
+                        <span className="text-on-surface-variant pl-1">
+                          {isUp ? '+' : ''}{item.change_value.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       </section>
     </div>
