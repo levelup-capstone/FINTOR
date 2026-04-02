@@ -2,51 +2,55 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
+// 💡 백엔드 enum 값을 한글명으로 매핑
 const assetNameMap: Record<string, string> = {
-  stock: '주식',
-  coin: '코인',
-  krw: '원화',
-  gold: '금',
+  'growth-stock': '성장주',
+  'etf': 'ETF',
+  'bluechip-stock': '배당형 우량주',
+  'deposit': '예적금',
+  'bonds': '채권',
+  'coin': '코인',
+  'krw': '원화',
+  'gold': '금',
 };
 
-const portfolioTypes = [
-  {
-    id: 'stable',
-    name: '안정형',
-    assets: '배당형 우량주, 예적금, 채권, ETF, 달러, 원화',
-    chartColor: '#3b82f6',
-    chartData: [
-      { name: 'stock', value: 45, color: '#1A237E' },
-      { name: 'coin', value: 25, color: '#7C4DFF' },
-      { name: 'krw', value: 15, color: '#90A4AE' },
-      { name: 'gold', value: 15, color: '#FFB300' },
-    ],
-  },
-  {
-    id: 'risk-neutral',
-    name: '위험 중립형',
-    assets: 'ETF, 배당형 우량주, 성장주, 달러, 채권, 원화',
-    chartColor: '#eab308',
-    chartData: [
-      { name: 'stock', value: 45, color: '#1A237E' },
-      { name: 'coin', value: 25, color: '#7C4DFF' },
-      { name: 'krw', value: 15, color: '#90A4AE' },
-      { name: 'gold', value: 15, color: '#FFB300' },
-    ],
-  },
-  {
-    id: 'aggressive',
-    name: '공격 투자형',
-    assets: '성장주, 비트코인, ETF, 달러, 채권, 원화',
-    chartColor: '#ef4444',
-    chartData: [
-      { name: 'stock', value: 45, color: '#1A237E' },
-      { name: 'coin', value: 25, color: '#7C4DFF' },
-      { name: 'krw', value: 15, color: '#90A4AE' },
-      { name: 'gold', value: 15, color: '#FFB300' },
-    ],
-  },
-];
+// 💡 차트를 위한 색상 매핑
+const assetColorMap: Record<string, string> = {
+  'growth-stock': '#ef4444', // 빨강
+  'bluechip-stock': '#1A237E', // 딥블루
+  'etf': '#3b82f6', // 라이트블루
+  'deposit': '#10b981', // 초록
+  'bonds': '#8b5cf6', // 보라
+  'coin': '#f59e0b', // 주황
+  'krw': '#9ca3af', // 회색
+  'gold': '#eab308', // 노랑
+};
+
+// 💡 백엔드 API 명세에 맞춘 Enum 데이터 맵
+const ageGroupMap: Record<string, string> = {
+  '20대 미만': 'under-20', '20대': '20y', '30대': '30y', '40대': '40y', '50대': '50y', '60대 이상': 'over-60',
+};
+const experienceMap: Record<string, string> = {
+  '없음': 'none', '6개월 미만': 'under-6m', '6개월-1년': '6m-1y', '1-3년': '1y-3y', '3-5년': '3y-5y', '5년 이상': 'over-5y',
+};
+const periodMap: Record<string, string> = {
+  '단기 (6개월 미만)': 'short', '중단기 (6개월-3년)': 's-mid', '중장기 (3년-5년)': 'm-long', '장기 (5년 이상)': 'long',
+};
+const assetMap: Record<string, string> = {
+  '성장주': 'growth-stock', 'ETF': 'etf', '배당형 우량주': 'bluechip-stock', '예적금': 'deposit', '채권': 'bonds', '코인': 'coin', '현금': 'krw', '금': 'gold',
+};
+const riskMap: Record<string, string> = {
+  '원금 손실이 거의 없어야 마음이 편하다.': 'v-low', '약간의 수익은 원하지만 손실엔 민감': 'low', '높은 수익을 위해 위험도 일부 감수': 'high', '변동성에 대한 두려움이 거의 없고 공격적으로 접근': 'v-high',
+};
+const investAmountMap: Record<string, string> = {
+  '500만원 미만': 'under-500', '500만원-1천만원': '500-1000', '1천만원-5천만원': '1000-5000', '5천만원-1억': '5000-1m', '1억-3억': '1m-3m', '3억 이상': 'over-3m',
+};
+const incomeMap: Record<string, string> = {
+  '200만원 미만': 'under-200', '200-400만원': '200-400', '400-600만원': '400-600', '600-800만원': '600-800', '800-1000만원': '800-1000', '1000만원 이상': 'over-1000',
+};
+const goalMap: Record<string, string> = {
+  '노후 준비': 'retirement', '자산 증식': 'growth', '자녀 교육': 'saving', '주택 마련': 'home-ownership', '여유 자금 운용': 'investment-management', '기타': 'others',
+};
 
 const questions = [
   { id: 'age', title: '연령대를 선택해주세요', options: ['20대 미만','20대', '30대', '40대', '50대', '60대 이상'] },
@@ -59,7 +63,15 @@ const questions = [
   { id: 'goal', title: '투자 목적은 무엇인가요?', options: ['노후 준비', '자산 증식', '자녀 교육', '주택 마련', '여유 자금 운용', '기타'] },
 ];
 
-type Portfolio = typeof portfolioTypes[number];
+// 백엔드로부터 전달받아 변환할 포트폴리오 타입
+type Portfolio = {
+  id: string;
+  name: string;
+  allocations: { asset: string; ratio: number }[];
+  chartData: { name: string; value: number; color: string }[];
+  assets: string;
+  chartColor: string;
+};
 
 export function Survey() {
   const navigate = useNavigate();
@@ -70,7 +82,11 @@ export function Survey() {
   const [showIntro, setShowIntro] = useState(true);
   const [isCompleted, setIsCompleted] = useState(false);
   const [showPortfolioSelection, setShowPortfolioSelection] = useState(false);
+  
+  // 💡 백엔드 통신 후 받아올 포트폴리오 상태 관리
+  const [fetchedPortfolios, setFetchedPortfolios] = useState<Portfolio[]>([]);
   const [selectedPortfolio, setSelectedPortfolio] = useState<Portfolio | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem('surveyAnswers');
@@ -104,16 +120,70 @@ export function Survey() {
 
   const canProceed = isMultiStep ? selectedOptions.length > 0 : !!selectedOption;
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (!canProceed) return;
     const value = isMultiStep ? selectedOptions : selectedOption!;
-    const newAnswers = { ...answers, [questions[currentStep].id]: value };
-    setAnswers(newAnswers);
-    localStorage.setItem('surveyAnswers', JSON.stringify(newAnswers));
+    const currentAnswers = { ...answers, [questions[currentStep].id]: value };
+    
+    setAnswers(currentAnswers);
+    localStorage.setItem('surveyAnswers', JSON.stringify(currentAnswers));
+    
     if (currentStep < questions.length - 1) {
       setCurrentStep(currentStep + 1);
     } else {
-      setIsCompleted(true);
+      // 💡 [핵심 로직] 설문 마지막 단계에서 백엔드로 데이터 전송 후 포트폴리오 응답 받기
+      setIsSubmitting(true);
+      const assetTypeRaw = currentAnswers['assetType'];
+      
+      const payload = {
+        age_group: ageGroupMap[currentAnswers['age'] as string],
+        investment_experience: experienceMap[currentAnswers['experience'] as string],
+        preferred_period: periodMap[currentAnswers['period'] as string],
+        preferred_assets: (Array.isArray(assetTypeRaw) ? assetTypeRaw : [assetTypeRaw])
+          .map((a) => assetMap[a]).filter(Boolean),
+        risk_type: riskMap[currentAnswers['risk'] as string],
+        investment_assets: investAmountMap[currentAnswers['investAmount'] as string],
+        monthly_income: incomeMap[currentAnswers['income'] as string],
+        investment_goal: goalMap[currentAnswers['goal'] as string],
+      };
+
+      try {
+        const token = localStorage.getItem('accessToken');
+        const res = await fetch('http://localhost:8000/api/survey', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await res.json();
+        
+        if (res.ok && data.success && data.data?.portfolios) {
+          // 백엔드 데이터를 차트용 포맷으로 변환
+          const mappedPortfolios: Portfolio[] = data.data.portfolios.map((p: any) => ({
+            ...p,
+            chartData: p.allocations.map((a: any) => ({
+              name: a.asset,
+              value: a.ratio,
+              color: assetColorMap[a.asset] || '#000',
+            })),
+            assets: p.allocations.map((a: any) => assetNameMap[a.asset]).join(', '),
+            chartColor: p.id === 'stable' ? '#3b82f6' : p.id === 'risk-neutral' ? '#eab308' : '#ef4444'
+          }));
+          
+          setFetchedPortfolios(mappedPortfolios);
+          setIsCompleted(true);
+        } else {
+          alert(`서버 오류: ${data.message || '저장 실패'}`);
+        }
+      } catch (e) {
+        console.error("통신 에러", e);
+        alert("서버 통신에 실패했습니다.");
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -130,99 +200,12 @@ export function Survey() {
 
   const handlePortfolioSelect = (portfolio: Portfolio) => {
     setSelectedPortfolio(portfolio);
-    localStorage.setItem('selectedPortfolio', JSON.stringify(portfolio));
   };
 
-  const ageGroupMap: Record<string, string> = {
-    '20대 미만': 'under-20',
-    '20대': '20y',
-    '30대': '30y',
-    '40대': '40y',
-    '50대': '50y',
-    '60대 이상': 'over-60',
-  };
-  const experienceMap: Record<string, string> = {
-    '없음': 'none',
-    '6개월 미만': 'under-6m',
-    '6개월-1년': '6m-1y',
-    '1-3년': '1y-3y',
-    '3-5년': '3y-5y',
-    '5년 이상': 'over-5y',
-  };
-  const periodMap: Record<string, string> = {
-    '단기 (6개월 미만)': 'short',
-    '중단기 (6개월-3년)': 's-mid',
-    '중장기 (3년-5년)': 'm-long',
-    '장기 (5년 이상)': 'long',
-  };
-  const assetMap: Record<string, string> = {
-    '성장주': 'growth-stock',
-    'ETF': 'etf',
-    '배당형 우량주': 'bluechip-stock',
-    '예적금': 'deposit',
-    '채권': 'bonds',
-    '코인': 'coin',
-    '현금': 'krw',
-    '금': 'gold',
-  };
-  const riskMap: Record<string, string> = {
-    '원금 손실이 거의 없어야 마음이 편하다.': 'v-low',
-    '약간의 수익은 원하지만 손실엔 민감': 'low',
-    '높은 수익을 위해 위험도 일부 감수': 'high',
-    '변동성에 대한 두려움이 거의 없고 공격적으로 접근': 'v-high',
-  };
-  const investAmountMap: Record<string, string> = {
-    '500만원 미만': 'under-500',
-    '500만원-1천만원': '500-1000',
-    '1천만원-5천만원': '1000-5000',
-    '5천만원-1억': '5000-1m',
-    '1억-3억': '1m-3m',
-    '3억 이상': 'over_3m',
-  };
-  const incomeMap: Record<string, string> = {
-    '200만원 미만': 'under-200',
-    '200-400만원': '200-400',
-    '400-600만원': '400-600',
-    '600-800만원': '600-800',
-    '800-1000만원': '800-1000',
-    '1000만원 이상': 'over-1000',
-  };
-  const goalMap: Record<string, string> = {
-    '노후 준비': 'retirement',
-    '자산 증식': 'growth',
-    '자녀 교육': 'saving',
-    '주택 마련': 'home-ownership',
-    '여유 자금 운용': 'investment-management',
-    '기타': 'others',
-  };
-
-  const handleConfirm = async () => {
+  // 💡 선택 완료 시 대시보드로 이동만 처리
+  const handleConfirm = () => {
     if (!selectedPortfolio) return;
-    const assetTypeRaw = answers['assetType'];
-    const payload = {
-      age_group: ageGroupMap[answers['age'] as string],
-      investment_experience: experienceMap[answers['experience'] as string],
-      preferred_period: periodMap[answers['period'] as string],
-      preferred_assets: (Array.isArray(assetTypeRaw) ? assetTypeRaw : [assetTypeRaw])
-        .map((a) => assetMap[a]).filter(Boolean),
-      risk_type: riskMap[answers['risk'] as string],
-      investment_assets: investAmountMap[answers['investAmount'] as string],
-      monthly_income: incomeMap[answers['income'] as string],
-      investment_goal: goalMap[answers['goal'] as string],
-    };
-    try {
-      const token = localStorage.getItem('accessToken');
-      await fetch('http://localhost:8000/api/survey', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(payload),
-      });
-    } catch (e) {
-      // 백엔드 오류여도 대시보드로 이동
-    }
+    localStorage.setItem('selectedPortfolio', JSON.stringify(selectedPortfolio));
     localStorage.removeItem('surveyAnswers');
     navigate('/dashboard', { replace: true });
   };
@@ -236,7 +219,6 @@ export function Survey() {
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center py-8 px-4">
         <div className="w-full max-w-6xl">
           <div className="bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/20 p-6 md:p-10">
-            {/* 헤더 */}
             <div className="text-center mb-8">
               <span className="inline-block px-3 py-1 rounded-full bg-secondary-fixed text-on-secondary-fixed text-[10px] font-bold tracking-widest uppercase mb-4">
                 투자 성향 기반 자산 유형 분석 결과
@@ -244,13 +226,12 @@ export function Survey() {
               <h1 className="text-2xl md:text-4xl font-black font-headline tracking-tight text-[#1A237E] dark:text-white mb-2">
                 포트폴리오 선택
               </h1>
-              <p className="text-sm md:text-base text-on-surface-variant font-bold tracking-widest uppercase">3가지 포트폴리오가 설문 결과에 따라 제공되었습니다.</p>
+              <p className="text-sm md:text-base text-on-surface-variant font-bold tracking-widest uppercase">3가지 맞춤형 포트폴리오가 제공되었습니다.</p>
               <p className="text-sm md:text-base text-on-surface-variant font-bold tracking-widest uppercase">(선택후 대시보드에서 비율과 자산 종류 수정이 가능합니다.)</p>
             </div>
 
-            {/* 포트폴리오 카드 */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5 mb-8">
-              {portfolioTypes.map((portfolio) => (
+              {fetchedPortfolios.map((portfolio) => (
                 <button
                   key={portfolio.id}
                   onClick={() => handlePortfolioSelect(portfolio)}
@@ -275,14 +256,13 @@ export function Survey() {
                   </div>
 
                   <div className="flex items-center justify-center mb-6 flex-grow relative">
-                    {/* 클릭(선택) 시 범례 오버레이 고정 */}
                     {selectedPortfolio?.id === portfolio.id && (
                       <div className="absolute inset-0 flex items-center justify-center z-10">
                         <div className="bg-white/95 dark:bg-slate-800/95 rounded-xl shadow-lg border border-outline-variant/20 px-4 py-3 space-y-1.5">
                           {portfolio.chartData.map((entry) => (
                             <div key={entry.name} className="flex items-center gap-2">
                               <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: entry.color }} />
-                              <span className="text-xs font-bold text-on-surface-variant w-10">{assetNameMap[entry.name]}</span>
+                              <span className="text-xs font-bold text-on-surface-variant w-16">{assetNameMap[entry.name]}</span>
                               <span className="text-xs font-black text-[#1A237E]">{entry.value}%</span>
                             </div>
                           ))}
@@ -314,7 +294,6 @@ export function Survey() {
               ))}
             </div>
 
-            {/* 버튼 */}
             <div className="flex items-center justify-center gap-3">
               <button
                 onClick={() => setShowPortfolioSelection(false)}
@@ -332,7 +311,7 @@ export function Survey() {
                     : 'bg-surface-container-low text-on-surface-variant cursor-not-allowed'
                 }`}
               >
-                확인
+                대시보드로 이동
                 <span className="material-symbols-outlined text-base">arrow_forward</span>
               </button>
             </div>
@@ -348,7 +327,6 @@ export function Survey() {
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center py-8 px-4">
         <div className="w-full max-w-3xl">
           <div className="bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/20 overflow-hidden">
-            {/* 진행 바 100% */}
             <div className="w-full h-3 bg-slate-200 dark:bg-slate-700">
               <div className="h-full bg-[#1A237E] transition-all duration-500 ease-out" style={{ width: '100%' }} />
             </div>
@@ -366,7 +344,6 @@ export function Survey() {
                 <p className="text-sm md:text-base text-on-surface-variant font-bold">소중한 응답 감사드립니다.</p>
               </div>
 
-              {/* 답변 요약 */}
               <div className="bg-surface-container-low rounded-xl p-5 md:p-6 border border-outline-variant/20 mb-8">
                 <h2 className="text-base md:text-lg font-extrabold font-headline text-[#1A237E] dark:text-indigo-200 mb-4 flex items-center gap-2">
                   <span className="material-symbols-outlined text-xl">assignment</span>
@@ -387,7 +364,6 @@ export function Survey() {
                 </div>
               </div>
 
-              {/* 버튼 */}
               <div className="flex flex-col md:flex-row items-center justify-center gap-3">
                 <button
                   onClick={handleRestart}
@@ -401,7 +377,7 @@ export function Survey() {
                   className="w-full md:w-auto px-6 py-2.5 rounded-lg font-bold text-sm md:text-base transition-all duration-200 flex items-center justify-center gap-2 bg-[#1A237E] text-white hover:bg-[#1A237E]/90 hover:scale-105 hover:shadow-[0_0_20px_rgba(26,35,126,0.3)] hover:gap-3 active:scale-95"
                 >
                   <span className="material-symbols-outlined text-base">bar_chart</span>
-                  설문 결과에 따른 추천 포트폴리오 보기
+                  맞춤형 포트폴리오 만들기
                 </button>
               </div>
             </div>
@@ -417,12 +393,10 @@ export function Survey() {
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center py-8 px-4">
         <div className="w-full max-w-xl">
           <div className="bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/20 px-8 py-14 md:px-14 md:py-20 flex flex-col items-center text-center gap-8">
-            {/* 아이콘 */}
             <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-[#1A237E] shadow-lg">
               <span className="material-symbols-outlined text-white text-4xl">assignment</span>
             </div>
 
-            {/* 텍스트 */}
             <div className="space-y-4">
               <h1 className="text-2xl md:text-3xl font-black font-headline tracking-tight text-[#1A237E] dark:text-white leading-tight">
                 저희 서비스에 처음 오셨군요!
@@ -433,7 +407,6 @@ export function Survey() {
               </p>
             </div>
 
-            {/* 버튼 */}
             <button
               onClick={() => setShowIntro(false)}
               className="px-10 py-3.5 rounded-xl font-bold text-base md:text-lg bg-[#1A237E] text-white transition-all duration-200 hover:bg-[#1A237E]/90 hover:scale-105 hover:shadow-[0_0_20px_rgba(26,35,126,0.3)] active:scale-95 flex items-center gap-2"
@@ -452,13 +425,11 @@ export function Survey() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center py-8 px-4">
       <div className="w-full max-w-3xl">
         <div className="bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/20 overflow-hidden">
-          {/* 진행 바 */}
           <div className="w-full h-3 bg-slate-200 dark:bg-slate-700">
             <div className="h-full bg-[#1A237E] transition-all duration-500 ease-out" style={{ width: `${progress}%` }} />
           </div>
 
           <div className="px-6 py-10 md:px-10 md:py-12">
-            {/* 진행 상태 */}
             <div className="text-center mb-8">
               <span className="inline-block px-3 py-1 rounded-full bg-secondary-fixed text-on-secondary-fixed text-[15px] font-bold tracking-widest uppercase mb-4">
                 질문 {currentStep + 1} / {questions.length}
@@ -477,14 +448,12 @@ export function Survey() {
               </div>
             </div>
 
-            {/* 다중 선택 안내 */}
             {isMultiStep && (
               <p className="text-sl font-bold text-on-surface-variant text-center mb-5">
                 최대 3가지 선택 ({selectedOptions.length} / 3)
               </p>
             )}
 
-            {/* 옵션 카드 */}
             <div className="grid grid-cols-2 gap-3 mb-8">
               {currentQuestion.options.map((option, index) => {
                 const isSelected = isMultiStep ? selectedOptions.includes(option) : selectedOption === option;
@@ -530,7 +499,6 @@ export function Survey() {
               })}
             </div>
 
-            {/* 이전 / 다음 */}
             <div className="flex items-center justify-between">
               {currentStep > 0 ? (
                 <button
@@ -543,15 +511,15 @@ export function Survey() {
               ) : <div />}
               <button
                 onClick={handleNext}
-                disabled={!canProceed}
+                disabled={!canProceed || isSubmitting}
                 className={`px-4 md:px-6 py-2 md:py-2.5 rounded-lg font-bold text-sm md:text-base transition-all duration-200 flex items-center gap-1.5 active:scale-95 ${
-                  canProceed
+                  canProceed && !isSubmitting
                     ? 'bg-[#1A237E] text-white hover:bg-[#1A237E]/90 hover:scale-105 hover:shadow-[0_0_20px_rgba(26,35,126,0.3)] hover:gap-2.5'
                     : 'bg-surface-container-low text-slate-300 cursor-not-allowed'
                 }`}
               >
-                {currentStep === questions.length - 1 ? '완료' : '다음'}
-                <span className="material-symbols-outlined text-base">arrow_forward</span>
+                {isSubmitting ? '저장 중...' : (currentStep === questions.length - 1 ? '완료' : '다음')}
+                {!isSubmitting && <span className="material-symbols-outlined text-base">arrow_forward</span>}
               </button>
             </div>
           </div>
