@@ -11,7 +11,7 @@ export function Dashboard() {
   const [marketLoading, setMarketLoading] = useState(true);
   const [marketError, setMarketError] = useState(false);
   const [marketUpdatedAt, setMarketUpdatedAt] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState('domestic');
+  const [activeTab, setActiveTab] = useState('major');
 
   const fetchMarket = async () => {
     setMarketLoading(true);
@@ -45,7 +45,7 @@ export function Dashboard() {
   };
 
   const formatUpdatedAt = (iso: string): string => {
-    const diff = Math.floor((Date.now() - new Date(iso + 'Z').getTime()) / 1000 / 60);
+    const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000 / 60);
     if (diff < 1) return '방금 전';
     return `${diff}분 전`;
   };
@@ -63,6 +63,7 @@ export function Dashboard() {
   };
 
   const CATEGORIES = [
+    { key: 'major',     label: '주요지수',   keys: ['SP500','NASDAQ100','KOSPI','KOSDAQ','BTC_KRW','USD_KRW','JPY_KRW'] },
     { key: 'domestic',  label: '국내',       keys: ['KOSPI','KOSDAQ','VKOSPI','KRX200IT','KRXHEALTH','BBIG'] },
     { key: 'us',        label: '미국',       keys: ['SP500','NASDAQ100','DOW30','SOX','NBI','FANGPLUS','VIX','US10Y'] },
     { key: 'asia',      label: '아시아·유럽', keys: ['NIKKEI225','HANSENG','SSE','EUROSTOXX50'] },
@@ -323,7 +324,7 @@ export function Dashboard() {
               const item = marketData?.[key];
               const isUp = item ? item.change_rate >= 0 : true;
               return (
-                <div key={key} className="bg-surface-container-low p-5 rounded-xl transition-all hover:bg-surface-container-lowest cursor-default">
+                <div key={key} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-5 rounded-xl shadow-sm transition-all hover:shadow-md hover:border-slate-300 cursor-default">
                   <p className="text-xs font-bold text-on-surface-variant mb-1">{INDEX_LABEL[key] ?? key}</p>
                   <div className="flex items-baseline gap-2 flex-wrap">
                     <span className="text-xl font-black font-headline">
