@@ -1,182 +1,557 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+
+const assetNameMap: Record<string, string> = {
+  stock: '주식',
+  coin: '코인',
+  krw: '원화',
+  gold: '금',
+};
+
+const portfolioTypes = [
+  {
+    id: 'stable',
+    name: '안정형',
+    assets: '배당형 우량주, 예적금, 채권, ETF, 달러, 원화',
+    chartColor: '#3b82f6',
+    chartData: [
+      { name: 'stock', value: 45, color: '#1A237E' },
+      { name: 'coin', value: 25, color: '#7C4DFF' },
+      { name: 'krw', value: 15, color: '#90A4AE' },
+      { name: 'gold', value: 15, color: '#FFB300' },
+    ],
+  },
+  {
+    id: 'risk-neutral',
+    name: '위험 중립형',
+    assets: 'ETF, 배당형 우량주, 성장주, 달러, 채권, 원화',
+    chartColor: '#eab308',
+    chartData: [
+      { name: 'stock', value: 45, color: '#1A237E' },
+      { name: 'coin', value: 25, color: '#7C4DFF' },
+      { name: 'krw', value: 15, color: '#90A4AE' },
+      { name: 'gold', value: 15, color: '#FFB300' },
+    ],
+  },
+  {
+    id: 'aggressive',
+    name: '공격 투자형',
+    assets: '성장주, 비트코인, ETF, 달러, 채권, 원화',
+    chartColor: '#ef4444',
+    chartData: [
+      { name: 'stock', value: 45, color: '#1A237E' },
+      { name: 'coin', value: 25, color: '#7C4DFF' },
+      { name: 'krw', value: 15, color: '#90A4AE' },
+      { name: 'gold', value: 15, color: '#FFB300' },
+    ],
+  },
+];
 
 const questions = [
-  { id: 'age', title: '연령대를 선택해주세요', options: ['20대', '30대', '40대', '50대', '60대 이상'] },
-  { id: 'experience', title: '투자 경력은 얼마나 되시나요?', options: ['없음', '1년 미만', '1-3년', '3-5년', '5년 이상'] },
-  { id: 'period', title: '선호하는 투자 기간은?', options: ['단기 (1년 미만)', '중기 (1-3년)', '장기 (3년 이상)'] },
-  { id: 'assetType', title: '선호하는 자산 종류는?', options: ['주식', '채권', '펀드', '부동산', '원화', '금'] },
-  { id: 'risk', title: '감수 가능한 리스크 정도는?', options: ['매우 낮음', '낮음', '보통', '높음', '매우 높음'] },
-  { id: 'investAmount', title: '투자 가능한 자산 규모는?', options: ['1천만원 미만', '1천만원-5천만원', '5천만원-1억', '1억-3억', '3억 이상'] },
-  { id: 'income', title: '월 소득 수준은?', options: ['200만원 미만', '200-400만원', '400-600만원', '600-800만원', '800만원 이상'] },
-  { id: 'goal', title: '투자 목적은 무엇인가요?', options: ['노후 준비', '자산 증식', '자녀 교육', '주택 마련', '여유 자금 운용'] },
+  { id: 'age', title: '연령대를 선택해주세요', options: ['20대 미만','20대', '30대', '40대', '50대', '60대 이상'] },
+  { id: 'experience', title: '투자 경력은 얼마나 되시나요?', options: ['없음', '6개월 미만', '6개월-1년', '1-3년', '3-5년', '5년 이상'] },
+  { id: 'period', title: '선호하는 투자 기간은?', options: ['단기 (6개월 미만)', '중단기 (6개월-3년)', '중장기 (3년-5년)', '장기 (5년 이상)'] },
+  { id: 'assetType', title: '선호하는 자산 종류는?', options: ['성장주', 'ETF', '배당형 우량주', '예적금', '채권', '코인', '현금', '금'] },
+  { id: 'risk', title: '감수 가능한 리스크 정도는?', options: ['원금 손실이 거의 없어야 마음이 편하다.', '약간의 수익은 원하지만 손실엔 민감', '높은 수익을 위해 위험도 일부 감수', '변동성에 대한 두려움이 거의 없고 공격적으로 접근'] },
+  { id: 'investAmount', title: '투자 가능한 자산 규모는?', options: ['500만원 미만', '500만원-1천만원', '1천만원-5천만원', '5천만원-1억', '1억-3억', '3억 이상'] },
+  { id: 'income', title: '월 소득 수준은?', options: ['200만원 미만', '200-400만원', '400-600만원', '600-800만원', '800-1000만원', '1000만원 이상'] },
+  { id: 'goal', title: '투자 목적은 무엇인가요?', options: ['노후 준비', '자산 증식', '자녀 교육', '주택 마련', '여유 자금 운용', '기타'] },
 ];
+
+type Portfolio = typeof portfolioTypes[number];
 
 export function Survey() {
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
+  const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
+  const [showIntro, setShowIntro] = useState(true);
+  const [isCompleted, setIsCompleted] = useState(false);
+  const [showPortfolioSelection, setShowPortfolioSelection] = useState(false);
+  const [selectedPortfolio, setSelectedPortfolio] = useState<Portfolio | null>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem('surveyAnswers');
     if (saved) setAnswers(JSON.parse(saved));
   }, []);
 
+  const isMultiStep = questions[currentStep].id === 'assetType';
+
   useEffect(() => {
-    setSelectedOption(answers[questions[currentStep].id] || null);
+    const saved = answers[questions[currentStep].id];
+    if (questions[currentStep].id === 'assetType') {
+      setSelectedOptions(Array.isArray(saved) ? saved : []);
+      setSelectedOption(null);
+    } else {
+      setSelectedOption(typeof saved === 'string' ? saved : null);
+      setSelectedOptions([]);
+    }
   }, [currentStep, answers]);
 
-  const handleOptionClick = (option: string) => setSelectedOption(option);
+  const handleOptionClick = (option: string) => {
+    if (isMultiStep) {
+      setSelectedOptions((prev) => {
+        if (prev.includes(option)) return prev.filter((o) => o !== option);
+        if (prev.length >= 3) return prev;
+        return [...prev, option];
+      });
+    } else {
+      setSelectedOption(option);
+    }
+  };
 
-  const handleNext = async () => {
-    if (!selectedOption) return;
+  const canProceed = isMultiStep ? selectedOptions.length > 0 : !!selectedOption;
 
-    const newAnswers = { ...answers, [questions[currentStep].id]: selectedOption };
+  const handleNext = () => {
+    if (!canProceed) return;
+    const value = isMultiStep ? selectedOptions : selectedOption!;
+    const newAnswers = { ...answers, [questions[currentStep].id]: value };
     setAnswers(newAnswers);
     localStorage.setItem('surveyAnswers', JSON.stringify(newAnswers));
-
     if (currentStep < questions.length - 1) {
       setCurrentStep(currentStep + 1);
     } else {
-      // 설문 완료 → 백엔드 전송
-      try {
-        const token = localStorage.getItem('accessToken');
-        await fetch('http://localhost:8000/api/survey', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify(newAnswers),
-        });
-      } catch (e) {
-        // 백엔드 오류여도 대시보드로 이동
-      }
-      localStorage.removeItem('surveyAnswers');
-      navigate('/dashboard', { replace: true });
+      setIsCompleted(true);
     }
+  };
+
+  const handleRestart = () => {
+    setIsCompleted(false);
+    setShowPortfolioSelection(false);
+    setCurrentStep(0);
+    setAnswers({});
+    setSelectedOption(null);
+    setSelectedPortfolio(null);
+    localStorage.removeItem('surveyAnswers');
+    localStorage.removeItem('selectedPortfolio');
+  };
+
+  const handlePortfolioSelect = (portfolio: Portfolio) => {
+    setSelectedPortfolio(portfolio);
+    localStorage.setItem('selectedPortfolio', JSON.stringify(portfolio));
+  };
+
+  const ageGroupMap: Record<string, string> = {
+    '20대 미만': 'under-20',
+    '20대': '20y',
+    '30대': '30y',
+    '40대': '40y',
+    '50대': '50y',
+    '60대 이상': 'over-60',
+  };
+  const experienceMap: Record<string, string> = {
+    '없음': 'none',
+    '6개월 미만': 'under-6m',
+    '6개월-1년': '6m-1y',
+    '1-3년': '1y-3y',
+    '3-5년': '3y-5y',
+    '5년 이상': 'over-5y',
+  };
+  const periodMap: Record<string, string> = {
+    '단기 (6개월 미만)': 'short',
+    '중단기 (6개월-3년)': 's-mid',
+    '중장기 (3년-5년)': 'm-long',
+    '장기 (5년 이상)': 'long',
+  };
+  const assetMap: Record<string, string> = {
+    '성장주': 'growth-stock',
+    'ETF': 'etf',
+    '배당형 우량주': 'bluechip-stock',
+    '예적금': 'deposit',
+    '채권': 'bonds',
+    '코인': 'coin',
+    '현금': 'krw',
+    '금': 'gold',
+  };
+  const riskMap: Record<string, string> = {
+    '원금 손실이 거의 없어야 마음이 편하다.': 'v-low',
+    '약간의 수익은 원하지만 손실엔 민감': 'low',
+    '높은 수익을 위해 위험도 일부 감수': 'high',
+    '변동성에 대한 두려움이 거의 없고 공격적으로 접근': 'v-high',
+  };
+  const investAmountMap: Record<string, string> = {
+    '500만원 미만': 'under-500',
+    '500만원-1천만원': '500-1000',
+    '1천만원-5천만원': '1000-5000',
+    '5천만원-1억': '5000-1m',
+    '1억-3억': '1m-3m',
+    '3억 이상': 'over_3m',
+  };
+  const incomeMap: Record<string, string> = {
+    '200만원 미만': 'under-200',
+    '200-400만원': '200-400',
+    '400-600만원': '400-600',
+    '600-800만원': '600-800',
+    '800-1000만원': '800-1000',
+    '1000만원 이상': 'over-1000',
+  };
+  const goalMap: Record<string, string> = {
+    '노후 준비': 'retirement',
+    '자산 증식': 'growth',
+    '자녀 교육': 'saving',
+    '주택 마련': 'home-ownership',
+    '여유 자금 운용': 'investment-management',
+    '기타': 'others',
+  };
+
+  const handleConfirm = async () => {
+    if (!selectedPortfolio) return;
+    const assetTypeRaw = answers['assetType'];
+    const payload = {
+      age_group: ageGroupMap[answers['age'] as string],
+      investment_experience: experienceMap[answers['experience'] as string],
+      preferred_period: periodMap[answers['period'] as string],
+      preferred_assets: (Array.isArray(assetTypeRaw) ? assetTypeRaw : [assetTypeRaw])
+        .map((a) => assetMap[a]).filter(Boolean),
+      risk_type: riskMap[answers['risk'] as string],
+      investment_assets: investAmountMap[answers['investAmount'] as string],
+      monthly_income: incomeMap[answers['income'] as string],
+      investment_goal: goalMap[answers['goal'] as string],
+    };
+    try {
+      const token = localStorage.getItem('accessToken');
+      await fetch('http://localhost:8000/api/survey', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(payload),
+      });
+    } catch (e) {
+      // 백엔드 오류여도 대시보드로 이동
+    }
+    localStorage.removeItem('surveyAnswers');
+    navigate('/dashboard', { replace: true });
   };
 
   const currentQuestion = questions[currentStep];
   const progress = ((currentStep + 1) / questions.length) * 100;
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-100 flex items-center justify-center py-8 px-4 relative overflow-hidden">
-      <div className="absolute top-20 left-10 w-72 h-72 bg-purple-200 rounded-full mix-blend-multiply filter blur-xl opacity-30" />
-      <div className="absolute top-40 right-10 w-72 h-72 bg-blue-200 rounded-full mix-blend-multiply filter blur-xl opacity-30" />
-      <div className="absolute -bottom-8 left-20 w-72 h-72 bg-indigo-200 rounded-full mix-blend-multiply filter blur-xl opacity-30" />
-
-      <div className="w-full max-w-3xl relative z-10">
-        <div className="bg-white/90 backdrop-blur-md rounded-3xl shadow-2xl overflow-hidden border border-purple-100/50">
-          {/* 진행 바 */}
-          <div className="w-full h-3 bg-slate-200 rounded-full overflow-hidden shadow-inner">
-            <div
-              className="h-full bg-gradient-to-r from-[#1A237E] via-[#7C4DFF] to-[#D500F9] rounded-full transition-all duration-500 ease-out"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-
-          <div className="px-6 py-12 md:px-12 md:py-16">
-            {/* 진행 상태 */}
-            <div className="text-center mb-12">
-              <div className="inline-flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-purple-100 via-blue-100 to-indigo-100 rounded-full mb-6 shadow-sm">
-                <svg className="w-2 h-2 text-purple-600" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                </svg>
-                <p className="text-sm font-bold text-purple-700">질문 {currentStep + 1} / {questions.length}</p>
-              </div>
-              <h1 className="text-3xl md:text-4xl font-black bg-gradient-to-r from-[#1A237E] via-[#7C4DFF] to-[#D500F9] bg-clip-text text-transparent mb-3 leading-tight">
-                {currentQuestion.title}
+  // ── 포트폴리오 선택 화면 ──────────────────────────────────────────────────
+  if (showPortfolioSelection) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center py-8 px-4">
+        <div className="w-full max-w-6xl">
+          <div className="bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/20 p-6 md:p-10">
+            {/* 헤더 */}
+            <div className="text-center mb-8">
+              <span className="inline-block px-3 py-1 rounded-full bg-secondary-fixed text-on-secondary-fixed text-[10px] font-bold tracking-widest uppercase mb-4">
+                투자 성향 기반 자산 유형 분석 결과
+              </span>
+              <h1 className="text-2xl md:text-4xl font-black font-headline tracking-tight text-[#1A237E] dark:text-white mb-2">
+                포트폴리오 선택
               </h1>
-              <div className="flex items-center justify-center gap-2 mt-4">
-                {questions.map((_, index) => (
-                  <div
-                    key={index}
-                    className={`h-2 rounded-full transition-all duration-300 ${
-                      index === currentStep
-                        ? 'w-8 bg-gradient-to-r from-[#7C4DFF] to-[#D500F9]'
-                        : index < currentStep
-                        ? 'w-2 bg-[#1A237E]'
-                        : 'w-2 bg-gray-300'
-                    }`}
-                  />
-                ))}
-              </div>
+              <p className="text-sm md:text-base text-on-surface-variant font-bold tracking-widest uppercase">3가지 포트폴리오가 설문 결과에 따라 제공되었습니다.</p>
+              <p className="text-sm md:text-base text-on-surface-variant font-bold tracking-widest uppercase">(선택후 대시보드에서 비율과 자산 종류 수정이 가능합니다.)</p>
             </div>
 
-            {/* 옵션 카드 */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-              {currentQuestion.options.map((option, index) => (
+            {/* 포트폴리오 카드 */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5 mb-8">
+              {portfolioTypes.map((portfolio) => (
                 <button
-                  key={index}
-                  onClick={() => handleOptionClick(option)}
-                  className={`group relative p-6 rounded-2xl border-2 transition-all duration-300 ${
-                    selectedOption === option
-                      ? 'border-[#7C4DFF] bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 shadow-xl scale-105'
-                      : 'border-gray-200 bg-white hover:border-purple-300 hover:shadow-lg'
+                  key={portfolio.id}
+                  onClick={() => handlePortfolioSelect(portfolio)}
+                  className={`group relative p-6 md:p-7 rounded-xl border-2 transition-all duration-300 text-left min-h-[380px] flex flex-col hover:scale-[1.03] hover:shadow-xl ${
+                    selectedPortfolio?.id === portfolio.id
+                      ? 'border-[#1A237E] bg-surface-container-low shadow-xl scale-[1.03]'
+                      : 'border-outline-variant/30 bg-surface-container-low hover:border-[#1A237E]/40'
                   }`}
                 >
-                  <div className={`absolute -top-3 -left-3 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all ${
-                    selectedOption === option
-                      ? 'bg-gradient-to-r from-[#7C4DFF] to-[#D500F9] text-white shadow-lg'
-                      : 'bg-gray-100 text-gray-400 group-hover:bg-purple-100 group-hover:text-purple-600'
+                  <div className={`absolute top-3 right-3 w-5 h-5 rounded-full border-2 transition-all flex items-center justify-center ${
+                    selectedPortfolio?.id === portfolio.id
+                      ? 'border-[#1A237E] bg-[#1A237E]'
+                      : 'border-outline-variant group-hover:border-[#1A237E]'
                   }`}>
-                    {index + 1}
+                    {selectedPortfolio?.id === portfolio.id && (
+                      <span className="material-symbols-outlined text-white text-xs" style={{ fontVariationSettings: '"FILL" 1, "wght" 700' }}>check</span>
+                    )}
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className={`text-lg font-bold transition-colors ${
-                      selectedOption === option ? 'text-[#1A237E]' : 'text-gray-700 group-hover:text-[#1A237E]'
-                    }`}>
-                      {option}
-                    </span>
-                    <div className={`w-7 h-7 rounded-full border-2 transition-all flex items-center justify-center ${
-                      selectedOption === option
-                        ? 'border-[#7C4DFF] bg-gradient-to-r from-[#7C4DFF] to-[#D500F9] shadow-lg'
-                        : 'border-gray-300 group-hover:border-[#7C4DFF]'
-                    }`}>
-                      {selectedOption === option && (
-                        <svg className="w-4 h-4 text-white" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" viewBox="0 0 24 24" stroke="currentColor">
-                          <path d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
+
+                  <div className="inline-flex items-center justify-center px-3 py-1.5 rounded-full mb-5 text-white font-bold text-sm shadow-sm" style={{ backgroundColor: portfolio.chartColor }}>
+                    {portfolio.name}
+                  </div>
+
+                  <div className="flex items-center justify-center mb-6 flex-grow relative">
+                    {/* 클릭(선택) 시 범례 오버레이 고정 */}
+                    {selectedPortfolio?.id === portfolio.id && (
+                      <div className="absolute inset-0 flex items-center justify-center z-10">
+                        <div className="bg-white/95 dark:bg-slate-800/95 rounded-xl shadow-lg border border-outline-variant/20 px-4 py-3 space-y-1.5">
+                          {portfolio.chartData.map((entry) => (
+                            <div key={entry.name} className="flex items-center gap-2">
+                              <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: entry.color }} />
+                              <span className="text-xs font-bold text-on-surface-variant w-10">{assetNameMap[entry.name]}</span>
+                              <span className="text-xs font-black text-[#1A237E]">{entry.value}%</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div className={`w-40 h-40 md:w-44 md:h-44 transition-transform duration-300 group-hover:scale-110 ${selectedPortfolio?.id === portfolio.id ? 'scale-110' : ''}`}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie data={portfolio.chartData} cx="50%" cy="50%" innerRadius="55%" outerRadius="90%" startAngle={90} endAngle={-270} dataKey="value">
+                            {portfolio.chartData.map((entry, index) => (
+                              <Cell key={index} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            formatter={(value, name) => [`${value}%`, assetNameMap[name as string] ?? name]}
+                            contentStyle={{ borderRadius: '8px', fontSize: '12px' }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
                     </div>
                   </div>
-                  {selectedOption === option && (
-                    <div className="absolute inset-0 bg-gradient-to-r from-purple-400/5 via-blue-400/5 to-indigo-400/5 rounded-2xl animate-pulse" />
-                  )}
+
+                  <div className="pt-4 border-t border-outline-variant/30 mt-auto">
+                    <p className="text-xs font-bold text-on-surface-variant mb-1.5 uppercase tracking-wide">구성 금융 자산</p>
+                    <p className="text-sm md:text-base text-[#1A237E] dark:text-indigo-200 font-bold leading-snug">{portfolio.assets}</p>
+                  </div>
                 </button>
               ))}
             </div>
 
-            {/* 이전 / 다음 버튼 */}
-            <div className="flex items-center justify-between mt-12">
+            {/* 버튼 */}
+            <div className="flex items-center justify-center gap-3">
+              <button
+                onClick={() => setShowPortfolioSelection(false)}
+                className="flex-1 md:flex-none px-6 py-2.5 rounded-lg font-bold text-sm md:text-base transition-all duration-200 flex items-center justify-center gap-2 border-2 border-[#1A237E] text-[#1A237E] hover:bg-[#1A237E] hover:text-white active:scale-95"
+              >
+                <span className="material-symbols-outlined text-base">arrow_back</span>
+                뒤로
+              </button>
+              <button
+                disabled={!selectedPortfolio}
+                onClick={handleConfirm}
+                className={`flex-1 md:flex-none px-6 py-2.5 rounded-lg font-bold text-sm md:text-base transition-all duration-200 flex items-center justify-center gap-2 ${
+                  selectedPortfolio
+                    ? 'bg-[#1A237E] text-white hover:bg-[#1A237E]/90 hover:shadow-lg active:scale-95'
+                    : 'bg-surface-container-low text-on-surface-variant cursor-not-allowed'
+                }`}
+              >
+                확인
+                <span className="material-symbols-outlined text-base">arrow_forward</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── 설문 완료 화면 ────────────────────────────────────────────────────────
+  if (isCompleted) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center py-8 px-4">
+        <div className="w-full max-w-3xl">
+          <div className="bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/20 overflow-hidden">
+            {/* 진행 바 100% */}
+            <div className="w-full h-3 bg-slate-200 dark:bg-slate-700">
+              <div className="h-full bg-[#1A237E] transition-all duration-500 ease-out" style={{ width: '100%' }} />
+            </div>
+
+            <div className="px-6 py-10 md:px-10 md:py-14">
+              <div className="text-center mb-8">
+                <div className="flex justify-center mb-6">
+                  <div className="inline-flex items-center justify-center w-16 h-16 md:w-20 md:h-20 rounded-full bg-[#1A237E] shadow-lg">
+                    <span className="material-symbols-outlined text-white text-3xl md:text-4xl" style={{ fontVariationSettings: '"FILL" 1, "wght" 700' }}>check_circle</span>
+                  </div>
+                </div>
+                <h1 className="text-2xl md:text-4xl font-black font-headline tracking-tight text-[#1A237E] dark:text-white mb-2">
+                  설문이 완료되었습니다!
+                </h1>
+                <p className="text-sm md:text-base text-on-surface-variant font-bold">소중한 응답 감사드립니다.</p>
+              </div>
+
+              {/* 답변 요약 */}
+              <div className="bg-surface-container-low rounded-xl p-5 md:p-6 border border-outline-variant/20 mb-8">
+                <h2 className="text-base md:text-lg font-extrabold font-headline text-[#1A237E] dark:text-indigo-200 mb-4 flex items-center gap-2">
+                  <span className="material-symbols-outlined text-xl">assignment</span>
+                  응답 요약
+                </h2>
+                <div className="grid grid-cols-2 gap-3">
+                  {questions.map((question, index) => (
+                    <div key={question.id} className="bg-surface-container-lowest rounded-xl p-3 md:p-4 border border-outline-variant/20">
+                      <p className="text-[15px] font-extrabold text-[#1A237E] uppercase tracking-wide mb-1">질문 {index + 1}</p>
+                      <p className="text-sm md:text-sm font-extrabold text-slate-700 dark:text-slate-200 mb-1.5">{question.title}</p>
+                      <p className="text-sm md:text-base font-black text-[#1A237E] dark:text-indigo-200">
+                        {Array.isArray(answers[question.id])
+                          ? (answers[question.id] as string[]).join(' · ')
+                          : answers[question.id]}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 버튼 */}
+              <div className="flex flex-col md:flex-row items-center justify-center gap-3">
+                <button
+                  onClick={handleRestart}
+                  className="w-full md:w-auto px-6 py-2.5 rounded-lg font-bold text-sm md:text-base transition-all duration-200 flex items-center justify-center gap-2 border-2 border-[#1A237E] text-[#1A237E] hover:bg-[#1A237E] hover:text-white active:scale-95"
+                >
+                  <span className="material-symbols-outlined text-base">refresh</span>
+                  다시 시작
+                </button>
+                <button
+                  onClick={() => setShowPortfolioSelection(true)}
+                  className="w-full md:w-auto px-6 py-2.5 rounded-lg font-bold text-sm md:text-base transition-all duration-200 flex items-center justify-center gap-2 bg-[#1A237E] text-white hover:bg-[#1A237E]/90 hover:scale-105 hover:shadow-[0_0_20px_rgba(26,35,126,0.3)] hover:gap-3 active:scale-95"
+                >
+                  <span className="material-symbols-outlined text-base">bar_chart</span>
+                  설문 결과에 따른 추천 포트폴리오 보기
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── 인트로 화면 ──────────────────────────────────────────────────────────
+  if (showIntro) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center py-8 px-4">
+        <div className="w-full max-w-xl">
+          <div className="bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/20 px-8 py-14 md:px-14 md:py-20 flex flex-col items-center text-center gap-8">
+            {/* 아이콘 */}
+            <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-[#1A237E] shadow-lg">
+              <span className="material-symbols-outlined text-white text-4xl">assignment</span>
+            </div>
+
+            {/* 텍스트 */}
+            <div className="space-y-4">
+              <h1 className="text-2xl md:text-3xl font-black font-headline tracking-tight text-[#1A237E] dark:text-white leading-tight">
+                저희 서비스에 처음 오셨군요!
+              </h1>
+              <p className="text-base md:text-lg text-on-surface-variant font-bold leading-relaxed">
+                FINTOR는 사용자의 투자 유형에 따라<br className="hidden md:block" /> 자산을 구성해드립니다.<br />
+                간단한 설문을 시작합니다.
+              </p>
+            </div>
+
+            {/* 버튼 */}
+            <button
+              onClick={() => setShowIntro(false)}
+              className="px-10 py-3.5 rounded-xl font-bold text-base md:text-lg bg-[#1A237E] text-white transition-all duration-200 hover:bg-[#1A237E]/90 hover:scale-105 hover:shadow-[0_0_20px_rgba(26,35,126,0.3)] active:scale-95 flex items-center gap-2"
+            >
+              시작하기
+              <span className="material-symbols-outlined text-xl">arrow_forward</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── 설문 질문 화면 ────────────────────────────────────────────────────────
+  return (
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center py-8 px-4">
+      <div className="w-full max-w-3xl">
+        <div className="bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/20 overflow-hidden">
+          {/* 진행 바 */}
+          <div className="w-full h-3 bg-slate-200 dark:bg-slate-700">
+            <div className="h-full bg-[#1A237E] transition-all duration-500 ease-out" style={{ width: `${progress}%` }} />
+          </div>
+
+          <div className="px-6 py-10 md:px-10 md:py-12">
+            {/* 진행 상태 */}
+            <div className="text-center mb-8">
+              <span className="inline-block px-3 py-1 rounded-full bg-secondary-fixed text-on-secondary-fixed text-[15px] font-bold tracking-widest uppercase mb-4">
+                질문 {currentStep + 1} / {questions.length}
+              </span>
+              <h1 className="text-xl md:text-3xl font-black font-headline tracking-tight text-[#1A237E] dark:text-white mb-4 leading-tight">
+                {currentQuestion.title}
+              </h1>
+              <div className="flex items-center justify-center gap-1.5 md:gap-2">
+                {questions.map((_, index) => (
+                  <div key={index} className={`h-1.5 md:h-2 rounded-full transition-all duration-300 ${
+                    index === currentStep ? 'w-6 md:w-8 bg-[#1A237E]'
+                    : index < currentStep ? 'w-1.5 md:w-2 bg-[#1A237E]'
+                    : 'w-1.5 md:w-2 bg-slate-300'
+                  }`} />
+                ))}
+              </div>
+            </div>
+
+            {/* 다중 선택 안내 */}
+            {isMultiStep && (
+              <p className="text-sl font-bold text-on-surface-variant text-center mb-5">
+                최대 3가지 선택 ({selectedOptions.length} / 3)
+              </p>
+            )}
+
+            {/* 옵션 카드 */}
+            <div className="grid grid-cols-2 gap-3 mb-8">
+              {currentQuestion.options.map((option, index) => {
+                const isSelected = isMultiStep ? selectedOptions.includes(option) : selectedOption === option;
+                const isDisabled = isMultiStep && !isSelected && selectedOptions.length >= 3;
+                return (
+                  <button
+                    key={index}
+                    onClick={() => handleOptionClick(option)}
+                    disabled={isDisabled}
+                    className={`group relative p-4 md:p-5 rounded-xl border-2 transition-all duration-200 text-left ${
+                      isSelected
+                        ? 'border-[#1A237E] bg-surface-container-low shadow-md'
+                        : isDisabled
+                        ? 'border-outline-variant/20 bg-surface-container-low opacity-40 cursor-not-allowed'
+                        : 'border-outline-variant/30 bg-surface-container-low hover:border-[#1A237E]/40 hover:shadow-sm'
+                    }`}
+                  >
+                    <div className={`absolute -top-2 -left-2 w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center text-xs md:text-sm font-bold transition-all ${
+                      isSelected
+                        ? 'bg-[#1A237E] text-white shadow-sm'
+                        : 'bg-slate-100 text-on-surface-variant group-hover:bg-[#1A237E]/10 group-hover:text-[#1A237E]'
+                    }`}>
+                      {isMultiStep && isSelected ? selectedOptions.indexOf(option) + 1 : index + 1}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className={`text-xs md:text-base font-bold transition-colors ${
+                        isSelected ? 'text-[#1A237E]' : 'text-on-surface-variant group-hover:text-[#1A237E]'
+                      }`}>
+                        {option}
+                      </span>
+                      <div className={`w-5 h-5 md:w-6 md:h-6 ${isMultiStep ? 'rounded-md' : 'rounded-full'} border-2 transition-all flex items-center justify-center flex-shrink-0 ml-2 ${
+                        isSelected
+                          ? 'border-[#1A237E] bg-[#1A237E]'
+                          : 'border-outline-variant group-hover:border-[#1A237E]'
+                      }`}>
+                        {isSelected && (
+                          <span className="material-symbols-outlined text-white text-xs" style={{ fontVariationSettings: '"FILL" 1, "wght" 700' }}>check</span>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* 이전 / 다음 */}
+            <div className="flex items-center justify-between">
               {currentStep > 0 ? (
                 <button
                   onClick={() => setCurrentStep(currentStep - 1)}
-                  className="px-8 py-4 text-gray-600 hover:text-[#7C4DFF] font-bold transition-all duration-300 flex items-center gap-2"
+                  className="px-4 md:px-6 py-2 md:py-2.5 rounded-lg font-bold text-sm md:text-base transition-all duration-200 flex items-center gap-1.5 border-2 border-[#1A237E] text-[#1A237E] hover:bg-[#1A237E] hover:text-white active:scale-95"
                 >
-                  <svg className="w-5 h-5" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor">
-                    <path d="M15 19l-7-7 7-7" />
-                  </svg>
+                  <span className="material-symbols-outlined text-base">arrow_back</span>
                   이전
                 </button>
-              ) : (
-                <div />
-              )}
+              ) : <div />}
               <button
                 onClick={handleNext}
-                disabled={!selectedOption}
-                className={`px-8 py-4 rounded-xl font-bold text-lg transition-all duration-300 flex items-center gap-2 ${
-                  selectedOption
-                    ? 'text-[#1A237E] hover:text-[#7C4DFF]'
-                    : 'text-gray-300 cursor-not-allowed opacity-50'
+                disabled={!canProceed}
+                className={`px-4 md:px-6 py-2 md:py-2.5 rounded-lg font-bold text-sm md:text-base transition-all duration-200 flex items-center gap-1.5 active:scale-95 ${
+                  canProceed
+                    ? 'bg-[#1A237E] text-white hover:bg-[#1A237E]/90 hover:scale-105 hover:shadow-[0_0_20px_rgba(26,35,126,0.3)] hover:gap-2.5'
+                    : 'bg-surface-container-low text-slate-300 cursor-not-allowed'
                 }`}
               >
                 {currentStep === questions.length - 1 ? '완료' : '다음'}
-                <svg className="w-5 h-5" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor">
-                  <path d="M9 5l7 7-7 7" />
-                </svg>
+                <span className="material-symbols-outlined text-base">arrow_forward</span>
               </button>
             </div>
           </div>
