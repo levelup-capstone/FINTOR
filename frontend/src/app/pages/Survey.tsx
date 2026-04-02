@@ -16,14 +16,14 @@ const assetNameMap: Record<string, string> = {
 
 // 도넛 차트 자산별 색상
 const assetColorMap: Record<string, string> = {
-  'growth-stock': '#1A237E',
-  'etf': '#3949AB',
-  'bluechip-stock': '#5C6BC0',
-  'deposit': '#90A4AE',
-  'bonds': '#78909C',
-  'coin': '#7C4DFF',
-  'krw': '#B0BEC5',
-  'gold': '#FFB300',
+  'growth-stock': '#EF4444', // 성장주 - 공격적 성장, 빨강
+  'etf':          '#3B82F6', // ETF - 분산 안정, 파랑
+  'bluechip-stock':'#1A237E',// 배당 우량주 - 신뢰/안정, 딥네이비
+  'deposit':      '#10B981', // 예적금 - 안전/현금성, 초록
+  'bonds':        '#8B5CF6', // 채권 - 중간 안정, 보라
+  'coin':         '#F97316', // 코인 - 고위험 고수익, 주황
+  'krw':          '#94A3B8', // 원화 - 유동성, 회색
+  'gold':         '#EAB308', // 금 - 실물 자산, 골드
 };
 
 // 포트폴리오 카드 뱃지 색상 (3개 고정)
