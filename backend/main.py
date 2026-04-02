@@ -354,17 +354,22 @@ def get_market_indices(db: Session = Depends(get_db)):
         raise HTTPException(status_code=503, detail="시장 데이터 준비 중입니다. 잠시 후 다시 시도해주세요.")
 
     data = {}
+    latest_updated_at = None
+
     for row in rows:
         data[row.name] = {
             "price":        row.price,
             "change_rate":  row.change_rate,
             "change_value": row.change_value,
             "source":       row.source,
-            "updated_at":   row.updated_at.isoformat()
         }
+        # 가장 최근 updated_at 추적
+        if latest_updated_at is None or row.updated_at > latest_updated_at:
+            latest_updated_at = row.updated_at
 
     return {
         "success": True,
         "message": "시장 지표 데이터 조회 완료",
-        "data": data
+        "data": data,
+        "updated_at": latest_updated_at.isoformat() if latest_updated_at else None
     }
