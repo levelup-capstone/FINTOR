@@ -322,9 +322,9 @@ def get_market_indices():
         # Finnhub에서 이미 데이터 받은 항목은 스킵
         if name in all_results and all_results[name].get("source") == "finnhub":
             continue
-        data = fetch_yfinance_quote(name, symbol)
+        data = fetch_yfinance_quote(name, symbol) #이때 data에 이름 들어감
         if data:
-            all_results[name] = data
+            all_results[name] = data #인덱스를 이름으로 줘서 data찾음
 
     all_results["updated_at"] = now.isoformat()
     market_cache["data"] = all_results
