@@ -201,8 +201,8 @@ def fetch_finnhub_quote(name: str, symbol: str) -> dict | None:
 
         return {
             "price":        round(current, 4),
-            "change_value": round(change, 4),
             "change_rate":  round(rate, 2),
+            "change_value": round(change, 4),
             "source":       "finnhub"
         }
     except Exception as e:
