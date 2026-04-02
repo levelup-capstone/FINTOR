@@ -4,10 +4,11 @@ import requests
 import time
 import yfinance as yf
 import finnhub
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.orm import Session
 
 import models, schemas, crud
@@ -19,6 +20,8 @@ models.Base.metadata.create_all(bind=engine)
 app = FastAPI(title="Fintor Auth Server")
 
 DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
+KST = timezone(timedelta(hours=9))
+
 # --- [CORS 설정] ---
 app.add_middleware(
     CORSMiddleware,
@@ -125,10 +128,10 @@ def logout():
 KIS_DOMESTIC_SYMBOLS = {
     "KOSPI":     "0001",
     "KOSDAQ":    "1001",
-    "VKOSPI":    "0503",  # 변경
-    "KRX200IT":  "1028",  # 이건 맞는 것 같으니 유지
-    "KRXHEALTH": "1035",  # 변경
-    "BBIG":      "4411",  # 변경
+    "VKOSPI":    "0503",
+    "KRX200IT":  "1028",
+    "KRXHEALTH": "1035",
+    "BBIG":      "4411",
 }
 
 def get_kis_access_token():
@@ -212,10 +215,8 @@ def fetch_finnhub_quote(name: str, symbol: str) -> dict | None:
 
 # =====================================================================
 # [3] yfinance - 환율 / 원자재 / 해외지수 / 암호화폐
-#     Finnhub 장외 시간 fallback 포함
 # =====================================================================
 YFINANCE_SYMBOLS = {
-    # 미국 지수 (Finnhub fallback)
     "SP500":       "^GSPC",
     "NASDAQ100":   "^NDX",
     "DOW30":       "^DJI",
@@ -224,29 +225,21 @@ YFINANCE_SYMBOLS = {
     "FANGPLUS":    "^NYFANG",
     "VIX":         "^VIX",
     "US10Y":       "^TNX",
-
-    # 아시아 / 유럽 지수
     "NIKKEI225":   "^N225",
     "HANSENG":     "^HSI",
-    "SSE":         "000001.SS",  # 상해종합
+    "SSE":         "000001.SS",
     "EUROSTOXX50": "^STOXX50E",
-
-    # 환율
     "USD_KRW":     "USDKRW=X",
     "JPY_KRW":     "JPYKRW=X",
     "EUR_KRW":     "EURKRW=X",
     "DXY":         "DX-Y.NYB",
     "USD_JPY":     "USDJPY=X",
     "EUR_USD":     "EURUSD=X",
-
-    # 원자재
     "WTI":         "CL=F",
     "GOLD":        "GC=F",
     "SILVER":      "SI=F",
     "COPPER":      "HG=F",
     "NATGAS":      "NG=F",
-
-    # 암호화폐
     "BTC_KRW":     "BTC-KRW",
 }
 
@@ -254,17 +247,14 @@ def fetch_yfinance_quote(name: str, symbol: str) -> dict | None:
     try:
         time.sleep(0.5)
         ticker = yf.Ticker(symbol)
-        
-        # fast_info 대신 history로 변경
         hist = ticker.history(period="2d")
-        
+
         if hist.empty:
             print(f"⚠️ yfinance [{name}] 데이터 없음")
             return None
 
         current = float(hist["Close"].iloc[-1])
         prev    = float(hist["Close"].iloc[-2]) if len(hist) >= 2 else current
-
         change_value = round(current - prev, 4)
         change_rate  = round((change_value / prev * 100) if prev != 0 else 0, 2)
 
@@ -280,58 +270,101 @@ def fetch_yfinance_quote(name: str, symbol: str) -> dict | None:
 
 
 # =====================================================================
-# [메인 엔드포인트] 전체 시장 지표 통합 조회
+# [핵심] 외부 API 호출 후 DB에 저장하는 함수
+# 백그라운드 스케줄러 + 서버 시작 시 최초 1회 실행
 # =====================================================================
-market_cache = {
-    "data": None,
-    "last_updated": None
-}
+def collect_and_save_market_data():
+    print(f"🔄 시장 데이터 수집 시작 ({datetime.now(KST).strftime('%H:%M:%S')} KST)")
 
-@app.get("/api/v1/market/indices")
-def get_market_indices():
-    global market_cache
-    now = datetime.utcnow()
+    # DB 세션 직접 생성 (스케줄러는 Depends 못 씀)
+    db: Session = next(get_db())
 
-    # 캐시 유효하면 바로 반환 (2분)
-    if not DEV_MODE and market_cache["data"] and market_cache["last_updated"]:
-        if now - market_cache["last_updated"] < timedelta(minutes=5):
-            return {"success": True, "message": "성공 (Cache)", "data": market_cache["data"]}
+    try:
+        now = datetime.now(KST)
+        all_results = {}
 
-    all_results = {}
+        # 1. 한투증: 국내 지수
+        token = get_kis_access_token()
+        if token:
+            for name, symb in KIS_DOMESTIC_SYMBOLS.items():
+                data = fetch_kis_domestic(symb, token)
+                if data:
+                    all_results[name] = data
+                time.sleep(0.05)
+        else:
+            print("⚠️ KIS 토큰 발급 실패 - 국내 지수 스킵")
 
-    # --- 1. 한투증: 국내 지수 ---
-    token = get_kis_access_token()
-    if token:
-        for name, symb in KIS_DOMESTIC_SYMBOLS.items():
-            data = fetch_kis_domestic(symb, token)
+        # 2. Finnhub: 미국 지수 장중 우선
+        for name, symbol in FINNHUB_SYMBOLS.items():
+            data = fetch_finnhub_quote(name, symbol)
             if data:
                 all_results[name] = data
             time.sleep(0.05)
-    else:
-        print("⚠️ KIS 토큰 발급 실패 - 국내 지수 스킵")
 
-    # --- 2. Finnhub: 미국 지수 장중 실시간 ---
-    for name, symbol in FINNHUB_SYMBOLS.items():
-        data = fetch_finnhub_quote(name, symbol)
-        if data:
-            all_results[name] = data
-        time.sleep(0.05)  # Finnhub 무료 60 req/min 대응
+        # 3. yfinance: 나머지 + Finnhub fallback
+        for name, symbol in YFINANCE_SYMBOLS.items():
+            if name in all_results and all_results[name].get("source") == "finnhub":
+                continue
+            data = fetch_yfinance_quote(name, symbol)
+            if data:
+                all_results[name] = data
 
-    # --- 3. yfinance: 환율/원자재/해외지수 + Finnhub 장외 fallback ---
-    for name, symbol in YFINANCE_SYMBOLS.items():
-        # Finnhub에서 이미 데이터 받은 항목은 스킵
-        if name in all_results and all_results[name].get("source") == "finnhub":
-            continue
-        data = fetch_yfinance_quote(name, symbol) #이때 data에 이름 들어감
-        if data:
-            all_results[name] = data #인덱스를 이름으로 줘서 data찾음
+        # DB 저장 (upsert 방식 - 있으면 업데이트, 없으면 삽입)
+        for name, data in all_results.items():
+            crud.upsert_market_index(db, name=name, data=data, updated_at=now)
 
-    all_results["updated_at"] = now.isoformat()
-    market_cache["data"] = all_results
-    market_cache["last_updated"] = now
+        print(f"✅ 시장 데이터 저장 완료 ({len(all_results)}개)")
+
+    except Exception as e:
+        print(f"🚨 시장 데이터 수집 오류: {str(e)}")
+    finally:
+        db.close()
+
+
+# =====================================================================
+# [백그라운드 스케줄러] 5분마다 자동 수집
+# =====================================================================
+scheduler = BackgroundScheduler()
+
+@app.on_event("startup")
+def startup_event():
+    # 서버 시작 시 최초 1회 즉시 실행
+    collect_and_save_market_data()
+
+    # DEV_MODE면 1분, 아니면 5분마다 실행
+    interval = 1 if DEV_MODE else 5
+    scheduler.add_job(collect_and_save_market_data, "interval", minutes=interval)
+    scheduler.start()
+    print(f"⏰ 스케줄러 시작 ({interval}분 간격)")
+
+@app.on_event("shutdown")
+def shutdown_event():
+    scheduler.shutdown()
+    print("⏰ 스케줄러 종료")
+
+
+# =====================================================================
+# [메인 엔드포인트] DB에서 바로 꺼내서 반환
+# =====================================================================
+@app.get("/api/v1/market/indices")
+def get_market_indices(db: Session = Depends(get_db)):
+    rows = crud.get_all_market_indices(db)
+
+    if not rows:
+        raise HTTPException(status_code=503, detail="시장 데이터 준비 중입니다. 잠시 후 다시 시도해주세요.")
+
+    data = {}
+    for row in rows:
+        data[row.name] = {
+            "price":        row.price,
+            "change_rate":  row.change_rate,
+            "change_value": row.change_value,
+            "source":       row.source,
+            "updated_at":   row.updated_at.isoformat()
+        }
 
     return {
         "success": True,
         "message": "시장 지표 데이터 조회 완료",
-        "data": all_results
+        "data": data
     }
