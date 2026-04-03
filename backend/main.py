@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.orm import Session
 
@@ -41,6 +42,25 @@ KIS_BASE_URL = os.getenv("KIS_BASE_URL")
 KIS_APP_KEY = os.getenv("KIS_APP_KEY")
 KIS_APP_SECRET = os.getenv("KIS_APP_SECRET")
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
+
+security = HTTPBearer()
+
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)):
+    token = credentials.credentials
+    try:
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="토큰이 만료되었습니다.")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="토큰 검증에 실패했습니다.")
+    user = db.query(models.User).filter(models.User.id == int(user_id)).first()
+    if user is None:
+        raise HTTPException(status_code=401, detail="사용자를 찾을 수 없습니다.")
+    return user
+
 
 # Finnhub 클라이언트 초기화
 finnhub_client = finnhub.Client(api_key=FINNHUB_API_KEY)
@@ -403,6 +423,82 @@ def get_market_indices(db: Session = Depends(get_db)):
         "updated_at": latest_updated_at.isoformat() if latest_updated_at else None
     }
 # =====================================================================
+# [설문조사] 저장 및 포트폴리오 추천 반환
+# =====================================================================
+
+@app.post("/api/survey", response_model=schemas.SurveyResponse)
+def submit_survey(
+    survey_data: schemas.SurveyCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    try:
+        existing_survey = db.query(models.Survey).filter(models.Survey.user_id == current_user.id).first()
+        if existing_survey:
+            return JSONResponse(status_code=400, content={
+                "success": False,
+                "message": "이미 설문을 완료한 사용자입니다.",
+                "data": None
+            })
+
+        new_survey = models.Survey(
+            user_id=current_user.id,
+            **survey_data.dict()
+        )
+        db.add(new_survey)
+        db.commit()
+
+        dummy_portfolios = [
+            {
+                "id": "stable",
+                "name": "안정형",
+                "allocations": [
+                    {"asset": "deposit",        "ratio": 35},
+                    {"asset": "bonds",           "ratio": 30},
+                    {"asset": "bluechip-stock",  "ratio": 20},
+                    {"asset": "gold",            "ratio": 10},
+                    {"asset": "krw",             "ratio": 5}
+                ]
+            },
+            {
+                "id": "risk-neutral",
+                "name": "위험중립형",
+                "allocations": [
+                    {"asset": "etf",             "ratio": 30},
+                    {"asset": "bluechip-stock",  "ratio": 30},
+                    {"asset": "growth-stock",    "ratio": 20},
+                    {"asset": "bonds",           "ratio": 10},
+                    {"asset": "krw",             "ratio": 10}
+                ]
+            },
+            {
+                "id": "aggressive",
+                "name": "공격투자형",
+                "allocations": [
+                    {"asset": "growth-stock",    "ratio": 40},
+                    {"asset": "coin",            "ratio": 30},
+                    {"asset": "etf",             "ratio": 20},
+                    {"asset": "krw",             "ratio": 10}
+                ]
+            }
+        ]
+
+        return {
+            "success": True,
+            "message": "설문이 성공적으로 저장되었습니다.",
+            "data": {"portfolios": dummy_portfolios}
+        }
+
+    except Exception as e:
+        db.rollback()
+        print(f"🚨 [Survey 저장 오류]: {e}")
+        return JSONResponse(status_code=500, content={
+            "success": False,
+            "message": "서버 내부 오류로 인해 데이터를 저장하지 못했습니다."
+        })
+
+
+# =====================================================================
 # [포트폴리오] 조회 / 생성
 # =====================================================================
 
@@ -493,5 +589,37 @@ def create_portfolio(req: schemas.PortfolioCreate, db: Session = Depends(get_db)
                     for a in portfolio.allocations
                 ]
             }
+        }
+    }
+
+
+
+# =====================================================================
+# [레벨] 사용자 레벨 / 경험치 조회
+# =====================================================================
+
+@app.get("/api/v1/users/{user_id}/level")
+def get_user_level(user_id: int, db: Session = Depends(get_db)):
+    # 유저 존재 여부 확인
+    user = crud.get_user_by_id(db, user_id=user_id)
+    if not user:
+        return JSONResponse(status_code=404, content={
+            "success": False,
+            "error": {"code": "USER_NOT_FOUND", "message": "해당 사용자를 찾을 수 없습니다."}
+        })
+
+    user_level = crud.get_user_level(db, user_id=user_id)
+
+    # 레벨 데이터가 없으면 자동 생성 (level=1, exp=0)
+    if not user_level:
+        user_level = crud.create_user_level(db, user_id=user_id)
+
+    return {
+        "success": True,
+        "data": {
+            "userId":    user_id,
+            "level":     user_level.level,
+            "exp":       user_level.exp,
+            "updatedAt": user_level.updated_at.isoformat() if user_level.updated_at else None
         }
     }

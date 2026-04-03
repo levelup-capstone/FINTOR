@@ -195,7 +195,7 @@ export function Survey() {
   };
 
   // ── 목업 데이터 (백엔드 미구현 시 테스트용) ──────────────────────────────
-  const USE_MOCK = true; // 백엔드 준비되면 false로 변경
+  const USE_MOCK = false; // 백엔드 준비되면 false로 변경
 
   const mockPortfolios: ApiPortfolio[] = [
     {
@@ -268,8 +268,25 @@ export function Survey() {
   };
 
   // 포트폴리오 선택 확인 → 대시보드 이동
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!selectedPortfolio) return;
+    try {
+      const raw = localStorage.getItem('loginResult');
+      const userId = raw ? JSON.parse(raw)?.data?.userId : null;
+      const token  = localStorage.getItem('accessToken');
+      if (userId && token) {
+        await fetch('http://localhost:8000/api/v1/portfolios', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({
+            userid:      userId,
+            id:          selectedPortfolio.id,
+            name:        selectedPortfolio.name,
+            allocations: selectedPortfolio.allocations,
+          }),
+        });
+      }
+    } catch {}
     localStorage.setItem('selectedPortfolio', JSON.stringify(selectedPortfolio));
     localStorage.removeItem('surveyAnswers');
     navigate('/dashboard', { replace: true });
@@ -378,23 +395,15 @@ export function Survey() {
             {/* 버튼 */}
             <div className="flex items-center justify-center gap-3">
               <button
-                onClick={() => setShowPortfolioSelection(false)}
-                className="flex-1 md:flex-none px-6 py-2.5 rounded-lg font-bold text-sm md:text-base transition-all duration-200 flex items-center justify-center gap-2 border-2 border-[#1A237E] text-[#1A237E] hover:bg-[#1A237E] hover:text-white active:scale-95"
-              >
-                <span className="material-symbols-outlined text-base">arrow_back</span>
-                뒤로
-              </button>
-              <button
                 disabled={!selectedPortfolio}
                 onClick={handleConfirm}
-                className={`flex-1 md:flex-none px-6 py-2.5 rounded-lg font-bold text-sm md:text-base transition-all duration-200 flex items-center justify-center gap-2 ${
+                className={`w-full max-w-sm px-10 py-3 rounded-lg font-bold text-lg md:text-base transition-all duration-200 flex items-center justify-center gap-2 ${
                   selectedPortfolio
                     ? 'bg-[#1A237E] text-white hover:bg-[#1A237E]/90 hover:shadow-lg active:scale-95'
                     : 'bg-surface-container-low text-on-surface-variant cursor-not-allowed'
                 }`}
               >
                 확인
-                <span className="material-symbols-outlined text-base">arrow_forward</span>
               </button>
             </div>
           </div>

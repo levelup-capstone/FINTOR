@@ -6,6 +6,79 @@ export function Dashboard() {
   // null이면 아무것도 강조 안 됨, 'stock'/'coin'/'krw'/'gold' 중 하나면 해당 항목 강조
   const [hoveredAsset, setHoveredAsset] = useState<string | null>(null);
 
+  // 레벨/경험치
+  const [level, setLevel] = useState<number | null>(null);
+  const [exp, setExp] = useState<number>(0);
+  const MAX_EXP = 5000;
+
+  useEffect(() => {
+    const raw = localStorage.getItem('loginResult');
+    if (!raw) return;
+    try {
+      const userId = JSON.parse(raw)?.data?.userId;
+      if (!userId) return;
+      fetch(`http://localhost:8000/api/v1/users/${userId}/level`)
+        .then(r => r.json())
+        .then(json => {
+          if (json.success) {
+            setLevel(json.data.level);
+            setExp(json.data.exp);
+          }
+        })
+        .catch(() => {});
+    } catch {}
+  }, []);
+
+  // 포트폴리오
+  type Allocation = { asset: string; ratio: number };
+  const [portfolioName, setPortfolioName] = useState<string | null>(null);
+  const [allocations, setAllocations] = useState<Allocation[]>([]);
+
+  const ASSET_COLOR: Record<string, string> = {
+    'growth-stock': '#EF4444',
+    'etf':          '#3B82F6',
+    'bluechip-stock':'#1A237E',
+    'deposit':      '#10B981',
+    'bonds':        '#8B5CF6',
+    'coin':         '#F97316',
+    'krw':          '#94A3B8',
+    'gold':         '#EAB308',
+  };
+  const ASSET_LABEL: Record<string, string> = {
+    'growth-stock': '성장주',
+    'etf':          'ETF',
+    'bluechip-stock':'배당 우량주',
+    'deposit':      '예적금',
+    'bonds':        '채권',
+    'coin':         '코인',
+    'krw':          '원화',
+    'gold':         '금',
+  };
+
+  useEffect(() => {
+    const raw = localStorage.getItem('loginResult');
+    if (!raw) return;
+    try {
+      const userId = JSON.parse(raw)?.data?.userId;
+      if (!userId) return;
+      fetch(`http://localhost:8000/api/v1/portfolios?userid=${userId}`)
+        .then(r => r.json())
+        .then(json => {
+          if (json.success) {
+            setPortfolioName(json.data.portfolios.name);
+            setAllocations(json.data.portfolios.allocations);
+          }
+        })
+        .catch(() => {});
+    } catch {}
+  }, []);
+
+  const chartData = allocations.map(a => ({
+    id:    a.asset,
+    value: a.ratio,
+    color: ASSET_COLOR[a.asset] ?? '#94A3B8',
+  }));
+
   type IndexItem = { price: number; change_rate: number; change_value: number; source: string };
   const [marketData, setMarketData] = useState<Record<string, IndexItem> | null>(null);
   const [marketLoading, setMarketLoading] = useState(true);
@@ -89,17 +162,17 @@ export function Dashboard() {
           <div className="space-y-3">
             <div className="flex justify-between px-1 items-baseline">
               <span className="text-xl md:text-3xl font-black text-[#1A237E] dark:text-indigo-300 font-headline uppercase tracking-tighter italic drop-shadow-sm">
-                LEVEL 12
+                {level !== null ? `LEVEL ${level}` : 'LEVEL —'}
               </span>
               <span className="text-[9px] md:text-[10px] font-bold text-slate-600 dark:text-slate-400 tracking-wider uppercase">
-                XP 2,450 / 5,000
+                XP {exp.toLocaleString()} / {MAX_EXP.toLocaleString()}
               </span>
             </div>
             {/* XP 진행 바: width 값이 현재 경험치 비율 (2450/5000 = 49%) */}
             <div className="w-full h-3 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden shadow-inner">
               <div
                 className="h-full bg-gradient-to-r from-[#1A237E] via-[#7C4DFF] to-[#D500F9] rounded-full"
-                style={{ width: "49%" }}
+                style={{ width: `${Math.min((exp / MAX_EXP) * 100, 100)}%` }}
               ></div>
             </div>
           </div>
@@ -132,7 +205,7 @@ export function Dashboard() {
               </span>
               <div className="flex items-center gap-3 md:gap-4 mb-1 md:mb-3">
                 <h1 className="text-2xl md:text-4xl font-black font-headline tracking-tight text-[#000827] dark:text-white">
-                  안정적 관리형
+                  {portfolioName ?? '포트폴리오 로딩 중...'}
                 </h1>
                 <button className="inline-flex items-center gap-1 md:gap-1.5 px-2 py-1 md:px-3 md:py-1.5 bg-white border border-outline-variant rounded-lg text-[10px] md:text-xs font-bold text-on-surface-variant hover:bg-surface-container-low transition-colors shadow-sm">
                   <span className="material-symbols-outlined text-xs md:text-sm">
@@ -143,97 +216,41 @@ export function Dashboard() {
               </div>
             </header>
 
-            {/* 자산 카드 그리드 (주식/코인/원화/금)
-                각 카드에 마우스를 올리면 hoveredAsset 상태가 변경되어
-                오른쪽 DonutChart의 해당 조각이 함께 강조됨 */}
+            {/* 자산 카드 그리드 - 포트폴리오 API 데이터로 동적 렌더링 */}
             <div className="grid grid-cols-4 sm:grid-cols-2 lg:grid-cols-2 gap-2 md:gap-5">
-
-              {/* 주식 카드 */}
-              <div
-                className={`flex flex-col sm:flex-row items-center sm:items-center gap-1.5 sm:gap-4 p-2 md:p-5 rounded-xl md:rounded-2xl bg-surface-container-low transition-all cursor-pointer ${hoveredAsset === 'stock' ? 'shadow-md border-outline-variant scale-[1.02]' : 'border-transparent hover:shadow-md hover:border-outline-variant'} text-center sm:text-left border`}
-                onMouseEnter={() => setHoveredAsset('stock')}
-                onMouseLeave={() => setHoveredAsset(null)}
-              >
-                <div
-                  className="w-2.5 h-2.5 md:w-4 md:h-4 rounded-full flex-shrink-0 transition-transform duration-300"
-                  style={{ backgroundColor: "#1A237E", transform: hoveredAsset === 'stock' ? 'scale(1.2)' : 'scale(1)' }}
-                ></div>
-                <div className="flex flex-col">
-                  <p className="text-[8px] md:text-xs text-on-surface-variant font-extrabold uppercase tracking-tight">
-                    주식
-                  </p>
-                  <p className="text-[10px] sm:text-lg md:text-2xl font-black font-headline text-primary">
-                    45%
-                  </p>
-                </div>
-              </div>
-
-              {/* 코인 카드 */}
-              <div
-                className={`flex flex-col sm:flex-row items-center sm:items-center gap-1.5 sm:gap-4 p-2 md:p-5 rounded-xl md:rounded-2xl bg-surface-container-low transition-all cursor-pointer ${hoveredAsset === 'coin' ? 'shadow-md border-outline-variant scale-[1.02]' : 'border-transparent hover:shadow-md hover:border-outline-variant'} text-center sm:text-left border`}
-                onMouseEnter={() => setHoveredAsset('coin')}
-                onMouseLeave={() => setHoveredAsset(null)}
-              >
-                <div
-                  className="w-2.5 h-2.5 md:w-4 md:h-4 rounded-full flex-shrink-0 transition-transform duration-300"
-                  style={{ backgroundColor: "#7C4DFF", transform: hoveredAsset === 'coin' ? 'scale(1.2)' : 'scale(1)' }}
-                ></div>
-                <div className="flex flex-col">
-                  <p className="text-[8px] md:text-xs text-on-surface-variant font-extrabold uppercase tracking-tight">
-                    코인
-                  </p>
-                  <p className="text-[10px] sm:text-lg md:text-2xl font-black font-headline text-primary">
-                    25%
-                  </p>
-                </div>
-              </div>
-
-              {/* 원화 카드 */}
-              <div
-                className={`flex flex-col sm:flex-row items-center sm:items-center gap-1.5 sm:gap-4 p-2 md:p-5 rounded-xl md:rounded-2xl bg-surface-container-low transition-all cursor-pointer ${hoveredAsset === 'krw' ? 'shadow-md border-outline-variant scale-[1.02]' : 'border-transparent hover:shadow-md hover:border-outline-variant'} text-center sm:text-left border`}
-                onMouseEnter={() => setHoveredAsset('krw')}
-                onMouseLeave={() => setHoveredAsset(null)}
-              >
-                <div
-                  className="w-2.5 h-2.5 md:w-4 md:h-4 rounded-full flex-shrink-0 transition-transform duration-300"
-                  style={{ backgroundColor: "#90A4AE", transform: hoveredAsset === 'krw' ? 'scale(1.2)' : 'scale(1)' }}
-                ></div>
-                <div className="flex flex-col">
-                  <p className="text-[8px] md:text-xs text-on-surface-variant font-extrabold uppercase tracking-tight">
-                    원화
-                  </p>
-                  <p className="text-[10px] sm:text-lg md:text-2xl font-black font-headline text-primary">
-                    15%
-                  </p>
-                </div>
-              </div>
-
-              {/* 금 카드 */}
-              <div
-                className={`flex flex-col sm:flex-row items-center sm:items-center gap-1.5 sm:gap-4 p-2 md:p-5 rounded-xl md:rounded-2xl bg-surface-container-low transition-all cursor-pointer ${hoveredAsset === 'gold' ? 'shadow-md border-outline-variant scale-[1.02]' : 'border-transparent hover:shadow-md hover:border-outline-variant'} text-center sm:text-left border`}
-                onMouseEnter={() => setHoveredAsset('gold')}
-                onMouseLeave={() => setHoveredAsset(null)}
-              >
-                <div
-                  className="w-2.5 h-2.5 md:w-4 md:h-4 rounded-full flex-shrink-0 transition-transform duration-300"
-                  style={{ backgroundColor: "#FFB300", transform: hoveredAsset === 'gold' ? 'scale(1.2)' : 'scale(1)' }}
-                ></div>
-                <div className="flex flex-col">
-                  <p className="text-[8px] md:text-xs text-on-surface-variant font-extrabold uppercase tracking-tight">
-                    금
-                  </p>
-                  <p className="text-[10px] sm:text-lg md:text-2xl font-black font-headline text-primary">
-                    15%
-                  </p>
-                </div>
-              </div>
+              {allocations.map((alloc) => {
+                const color = ASSET_COLOR[alloc.asset] ?? '#94A3B8';
+                const label = ASSET_LABEL[alloc.asset] ?? alloc.asset;
+                const isHovered = hoveredAsset === alloc.asset;
+                return (
+                  <div
+                    key={alloc.asset}
+                    className={`flex flex-col sm:flex-row items-center sm:items-center gap-1.5 sm:gap-4 p-2 md:p-5 rounded-xl md:rounded-2xl bg-surface-container-low transition-all cursor-pointer ${isHovered ? 'shadow-md border-outline-variant scale-[1.02]' : 'border-transparent hover:shadow-md hover:border-outline-variant'} text-center sm:text-left border`}
+                    onMouseEnter={() => setHoveredAsset(alloc.asset)}
+                    onMouseLeave={() => setHoveredAsset(null)}
+                  >
+                    <div
+                      className="w-2.5 h-2.5 md:w-4 md:h-4 rounded-full flex-shrink-0 transition-transform duration-300"
+                      style={{ backgroundColor: color, transform: isHovered ? 'scale(1.2)' : 'scale(1)' }}
+                    />
+                    <div className="flex flex-col">
+                      <p className="text-[8px] md:text-xs text-on-surface-variant font-extrabold uppercase tracking-tight">
+                        {label}
+                      </p>
+                      <p className="text-[10px] sm:text-lg md:text-2xl font-black font-headline text-primary">
+                        {alloc.ratio}%
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
           {/* 도넛 차트: hoveredAsset 상태를 받아 해당 조각을 강조해서 렌더링
               onHover로 차트 쪽에서 호버해도 자산 카드가 함께 반응함 */}
           <div className="flex flex-col items-center">
-            <DonutChart hoveredId={hoveredAsset} onHover={setHoveredAsset} />
+            <DonutChart hoveredId={hoveredAsset} onHover={setHoveredAsset} data={chartData} />
           </div>
         </div>
       </section>

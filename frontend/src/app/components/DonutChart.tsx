@@ -1,15 +1,24 @@
+interface ChartSlice {
+  id: string;
+  value: number;
+  color: string;
+}
+
 interface DonutChartProps {
   hoveredId?: string | null;
   onHover?: (id: string | null) => void;
+  data?: ChartSlice[];
 }
 
-export function DonutChart({ hoveredId = null, onHover = () => {} }: DonutChartProps) {
-  const data = [
-    { id: 'stock', value: 45, color: '#1A237E' },
-    { id: 'coin', value: 25, color: '#7C4DFF' },
-    { id: 'krw', value: 15, color: '#90A4AE' },
-    { id: 'gold', value: 15, color: '#FFB300' },
-  ];
+const DEFAULT_DATA: ChartSlice[] = [
+  { id: 'growth-stock', value: 45, color: '#EF4444' },
+  { id: 'coin',         value: 25, color: '#F97316' },
+  { id: 'krw',          value: 15, color: '#94A3B8' },
+  { id: 'gold',         value: 15, color: '#EAB308' },
+];
+
+export function DonutChart({ hoveredId = null, onHover = () => {}, data }: DonutChartProps) {
+  const slices = data && data.length > 0 ? data : DEFAULT_DATA;
 
   const radius = 90;
   const circumference = 2 * Math.PI * radius;
@@ -18,15 +27,15 @@ export function DonutChart({ hoveredId = null, onHover = () => {} }: DonutChartP
   return (
     <div className="relative flex items-center justify-center w-[200px] h-[200px] md:w-[280px] md:h-[280px]">
       <svg viewBox="-120 -120 240 240" className="w-full h-full transform -rotate-90 drop-shadow-sm">
-        {data.map((item) => {
+        {slices.map((item) => {
           const dashArray = (item.value / 100) * circumference;
           const dashOffset = cumulativePercent * circumference;
-          
+
           cumulativePercent += item.value / 100;
-          
+
           const isHovered = hoveredId === item.id;
           const isFaded = hoveredId !== null && hoveredId !== item.id;
-          
+
           return (
             <circle
               key={item.id}
@@ -39,10 +48,7 @@ export function DonutChart({ hoveredId = null, onHover = () => {} }: DonutChartP
               strokeDasharray={`${dashArray} ${circumference}`}
               strokeDashoffset={-dashOffset}
               className="transition-all duration-300 ease-out cursor-pointer"
-              style={{
-                opacity: isFaded ? 0.3 : 1,
-                // Add a small gap between segments if desired, but we'll keep it solid as the original
-              }}
+              style={{ opacity: isFaded ? 0.3 : 1 }}
               onMouseEnter={() => onHover(item.id)}
               onMouseLeave={() => onHover(null)}
             />

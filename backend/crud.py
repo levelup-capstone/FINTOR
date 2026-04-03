@@ -75,3 +75,14 @@ def create_portfolio(db: Session, user_id: int, profile_id: str,
     db.commit()
     db.refresh(portfolio)
     return portfolio
+
+def get_user_level(db: Session, user_id: int):
+    return db.query(models.UserLevel).filter(models.UserLevel.user_id == user_id).first()
+
+def create_user_level(db: Session, user_id: int):
+    """유저 레벨 최초 생성 (level=1, exp=0)"""
+    user_level = models.UserLevel(user_id=user_id)
+    db.add(user_level)
+    db.commit()
+    db.refresh(user_level)
+    return user_level

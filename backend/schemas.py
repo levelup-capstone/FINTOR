@@ -65,3 +65,8 @@ class PortfolioResponseData(BaseModel):
 class PortfolioResponse(BaseModel):
     success: bool
     data: Optional[PortfolioResponseData] = None
+
+# 4. 레벨(Level) 관련 스키마
+class UserLevelResponse(BaseModel):
+    success: bool
+    data: Optional[dict] = None
