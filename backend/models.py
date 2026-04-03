@@ -46,3 +46,13 @@ class PortfolioAllocation(Base):
     ratio        = Column(Integer, nullable=False)  # 35, 30, ...
 
     portfolio = relationship("Portfolio", back_populates="allocations")
+
+class UserLevel(Base):
+    __tablename__ = "user_levels"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    user_id    = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True)
+    level      = Column(Integer, default=1, nullable=False)
+    exp        = Column(Integer, default=0, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))

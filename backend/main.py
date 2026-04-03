@@ -495,3 +495,33 @@ def create_portfolio(req: schemas.PortfolioCreate, db: Session = Depends(get_db)
             }
         }
     }
+
+# =====================================================================
+# [레벨] 사용자 레벨 / 경험치 조회
+# =====================================================================
+
+@app.get("/api/v1/users/{user_id}/level")
+def get_user_level(user_id: int, db: Session = Depends(get_db)):
+    # 유저 존재 여부 확인
+    user = crud.get_user_by_id(db, user_id=user_id)
+    if not user:
+        return JSONResponse(status_code=404, content={
+            "success": False,
+            "error": {"code": "USER_NOT_FOUND", "message": "해당 사용자를 찾을 수 없습니다."}
+        })
+
+    user_level = crud.get_user_level(db, user_id=user_id)
+
+    # 레벨 데이터가 없으면 자동 생성 (level=1, exp=0)
+    if not user_level:
+        user_level = crud.create_user_level(db, user_id=user_id)
+
+    return {
+        "success": True,
+        "data": {
+            "userId":    user_id,
+            "level":     user_level.level,
+            "exp":       user_level.exp,
+            "updatedAt": user_level.updated_at.isoformat() if user_level.updated_at else None
+        }
+    }
