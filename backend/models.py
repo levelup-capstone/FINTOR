@@ -1,4 +1,6 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
+from sqlalchemy.orm import relationship
+from datetime import datetime, timezone
 from database import Base
 
 class User(Base):
@@ -19,3 +21,28 @@ class MarketIndex(Base):
     change_value = Column(Float, default=0)
     source       = Column(String, default="")               # "kis", "finnhub", "yfinance"
     updated_at   = Column(DateTime(timezone=True))
+
+class Portfolio(Base):
+    __tablename__ = "portfolios"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    user_id    = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True)
+    profile_id = Column(String, nullable=False)   # "stable", "aggressive" 등
+    name       = Column(String, nullable=False)   # "안정형", "공격형" 등
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+    allocations = relationship("PortfolioAllocation", back_populates="portfolio",
+                               cascade="all, delete-orphan")
+
+
+class PortfolioAllocation(Base):
+    __tablename__ = "portfolio_allocations"
+
+    id           = Column(Integer, primary_key=True, index=True)
+    portfolio_id = Column(Integer, ForeignKey("portfolios.id"), nullable=False)
+    asset        = Column(String, nullable=False)   # "deposit", "bonds", ...
+    ratio        = Column(Integer, nullable=False)  # 35, 30, ...
+
+    portfolio = relationship("Portfolio", back_populates="allocations")

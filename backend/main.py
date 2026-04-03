@@ -402,3 +402,96 @@ def get_market_indices(db: Session = Depends(get_db)):
         "data": data,
         "updated_at": latest_updated_at.isoformat() if latest_updated_at else None
     }
+# =====================================================================
+# [포트폴리오] 조회 / 생성
+# =====================================================================
+
+@app.get("/api/v1/portfolios")
+def get_portfolio(userid: int, db: Session = Depends(get_db)):
+    # 파라미터 검증
+    if not userid:
+        return JSONResponse(status_code=400, content={
+            "success": False,
+            "error": {"code": "INVALID_PARAMETER", "message": "잘못된 요청 파라미터입니다."}
+        })
+
+    # 유저 존재 여부 확인
+    user = crud.get_user_by_id(db, user_id=userid)
+    if not user:
+        return JSONResponse(status_code=404, content={
+            "success": False,
+            "error": {"code": "USER_NOT_FOUND", "message": "해당 사용자를 찾을 수 없습니다."}
+        })
+
+    # 포트폴리오 조회
+    portfolio = crud.get_portfolio_by_user_id(db, user_id=userid)
+    if not portfolio:
+        return JSONResponse(status_code=404, content={
+            "success": False,
+            "error": {"code": "DATA_NOT_FOUND", "message": "포트폴리오 정보가 존재하지 않습니다."}
+        })
+
+    return {
+        "success": True,
+        "data": {
+            "portfolios": {
+                "id":   portfolio.profile_id,
+                "name": portfolio.name,
+                "allocations": [
+                    {"asset": a.asset, "ratio": a.ratio}
+                    for a in portfolio.allocations
+                ]
+            }
+        }
+    }
+
+
+@app.post("/api/v1/portfolios", status_code=201)
+def create_portfolio(req: schemas.PortfolioCreate, db: Session = Depends(get_db)):
+    # 유저 존재 여부 확인
+    user = crud.get_user_by_id(db, user_id=req.userid)
+    if not user:
+        return JSONResponse(status_code=404, content={
+            "success": False,
+            "error": {"code": "USER_NOT_FOUND", "message": "해당 사용자를 찾을 수 없습니다."}
+        })
+
+    # 비율 합계 검증 (100%여야 함)
+    total_ratio = sum(a.ratio for a in req.allocations)
+    if total_ratio != 100:
+        return JSONResponse(status_code=400, content={
+            "success": False,
+            "error": {
+                "code": "INVALID_PARAMETER",
+                "message": f"자산 배분 비율의 합이 100이어야 합니다. (현재: {total_ratio})"
+            }
+        })
+
+    try:
+        portfolio = crud.create_portfolio(
+            db=db,
+            user_id=req.userid,
+            profile_id=req.id,
+            name=req.name,
+            allocations=[a.model_dump() for a in req.allocations]
+        )
+    except Exception as e:
+        print(f"🚨 포트폴리오 생성 오류: {str(e)}")
+        return JSONResponse(status_code=500, content={
+            "success": False,
+            "error": {"code": "SERVER_ERROR", "message": "서버 내부 오류가 발생했습니다."}
+        })
+
+    return {
+        "success": True,
+        "data": {
+            "portfolios": {
+                "id":   portfolio.profile_id,
+                "name": portfolio.name,
+                "allocations": [
+                    {"asset": a.asset, "ratio": a.ratio}
+                    for a in portfolio.allocations
+                ]
+            }
+        }
+    }

@@ -30,23 +30,38 @@ class SurveyCreate(BaseModel):
     monthly_income: str
     investment_goal: str
 
-# 💡 [추가] 자산 배분 상세 스키마
 class AllocationItem(BaseModel):
     asset: str
     ratio: int
 
-# 💡 [추가] 포트폴리오 단일 항목 스키마
 class PortfolioItem(BaseModel):
     id: str
     name: str
     allocations: List[AllocationItem]
 
-# 💡 [추가] /api/survey 응답 데이터 구조
 class SurveyResponseData(BaseModel):
     portfolios: List[PortfolioItem]
 
-# 💡 [추가] 최종 Survey API 응답 스키마
 class SurveyResponse(BaseModel):
     success: bool
     message: Optional[str] = None
     data: Optional[SurveyResponseData] = None
+
+# 3. 포트폴리오(Portfolio) 관련 스키마
+class PortfolioCreate(BaseModel):
+    userid: int
+    id: str        # "stable", "aggressive" 등 성향 식별자
+    name: str      # "안정형", "공격형" 등
+    allocations: List[AllocationItem]
+
+class PortfolioDetail(BaseModel):
+    id: str
+    name: str
+    allocations: List[AllocationItem]
+
+class PortfolioResponseData(BaseModel):
+    portfolios: PortfolioDetail
+
+class PortfolioResponse(BaseModel):
+    success: bool
+    data: Optional[PortfolioResponseData] = None
