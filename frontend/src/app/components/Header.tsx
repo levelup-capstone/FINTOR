@@ -45,7 +45,7 @@ export function Header() {
       <div className="flex justify-between items-center w-full px-6 py-4 max-w-7xl mx-auto">
         <div className="flex items-center gap-8">
           <span className="text-2xl font-black text-[#1A237E] dark:text-white tracking-tighter font-headline">
-            FINTO
+            Fintor
           </span>
           <nav className="hidden md:flex gap-4">
             <a

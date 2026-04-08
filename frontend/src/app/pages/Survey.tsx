@@ -512,7 +512,7 @@ export function Survey() {
                 저희 서비스에 처음 오셨군요!
               </h1>
               <p className="text-base md:text-lg text-on-surface-variant font-bold leading-relaxed">
-                FINTOR는 사용자의 투자 유형에 따라<br className="hidden md:block" /> 자산을 구성해드립니다.<br />
+                Fintor는 사용자의 투자 유형에 따라<br className="hidden md:block" /> 자산을 구성해드립니다.<br />
                 간단한 설문을 시작합니다.
               </p>
             </div>

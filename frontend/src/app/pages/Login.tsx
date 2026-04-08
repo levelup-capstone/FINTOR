@@ -47,7 +47,7 @@ export function Login() {
                 <span className="text-white text-xs font-bold">F</span>
               </div>*/}
               <span className="text-2xl font-black text-[#ffffff] dark:text-white tracking-tighter font-headline">
-                  FINTO</span>
+                  Fintor</span>
             </div>
 
             {/* 데스크톱 메뉴 */}
@@ -131,7 +131,7 @@ export function Login() {
               </p>
             )}
             <h1 className="text-5xl sm:text-6xl md:text-8xl lg:text-9xl font-bold text-white mb-4 sm:mb-6 md:mb-8 leading-tight tracking-tight">
-              FINTO
+              Fintor
             </h1>
             <p className="text-white/90 text-base sm:text-lg md:text-2xl mb-8 sm:mb-10 md:mb-14 leading-relaxed font-medium px-2">
               LLM 기반 개인화 금융 학습 및<br className="sm:hidden" />{" "}
