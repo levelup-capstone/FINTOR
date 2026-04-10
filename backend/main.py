@@ -2,6 +2,7 @@ import os
 import jwt
 import requests
 import time
+import re
 import yfinance as yf
 import finnhub
 from requests import Session as ReqSession
@@ -12,7 +13,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.orm import Session
-
 import models, schemas, crud
 from database import engine, get_db
 
@@ -42,6 +42,8 @@ KIS_BASE_URL = os.getenv("KIS_BASE_URL")
 KIS_APP_KEY = os.getenv("KIS_APP_KEY")
 KIS_APP_SECRET = os.getenv("KIS_APP_SECRET")
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
+NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID")
+NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET")
 
 security = HTTPBearer()
 
@@ -371,7 +373,68 @@ def collect_and_save_market_data():
 
 
 # =====================================================================
-# [백그라운드 스케줄러] 5분마다 자동 수집
+# [뉴스 파이프라인] 네이버 수집, 중복 필터링 및 데이터 전처리 (1~3단계)
+# =====================================================================
+def clean_html(raw_html: str) -> str:
+    """[3단계] 정규표현식을 활용한 데이터 전처리 (Sanitization)"""
+    clean_text = re.sub(r'<.*?>', '', raw_html)
+    clean_text = re.sub(r'&quot;|&amp;|&lt;|&gt;|&apos;', ' ', clean_text)
+    return clean_text.strip()
+
+def run_news_pipeline():
+    """뉴스 데이터 수집, 필터링, 전처리 및 DB 적재 (OpenAI 연동 전단계)"""
+    print(f"📰 뉴스 파이프라인 가동 ({datetime.now(KST).strftime('%H:%M:%S')} KST)")
+    db: Session = next(get_db())
+    
+    try:
+        url = "https://openapi.naver.com/v1/search/news.json"
+        headers = {"X-Naver-Client-Id": NAVER_CLIENT_ID, "X-Naver-Client-Secret": NAVER_CLIENT_SECRET}
+        params = {"query": "경제 OR 증시 OR 금리 OR 투자", "display": 50, "sort": "date"}
+        
+        res = requests.get(url, headers=headers, params=params)
+        if res.status_code != 200:
+            print("🚨 네이버 API 호출 실패")
+            return
+            
+        # DB 저장은 표준 UTC 시간대 적용
+        now_utc = datetime.now(timezone.utc)
+
+        for item in res.json().get("items", []):
+            link = item.get("link")
+            
+            # [1단계 필터링] 네이버 포털 기사만 통과
+            if "n.news.naver.com" not in link: continue
+            
+            # [2단계 중복 제거] DB 교차 검증 (Deduplication)
+            if crud.get_news_by_link(db, link): continue
+
+            # [3단계 전처리] 정규표현식으로 HTML 태그 제거
+            title = clean_html(item.get("title", ""))
+            summary = clean_html(item.get("description", ""))
+
+            # DB 적재 페이로드 (LLM 분석 결과는 일단 기본값으로 세팅됨)
+            news_data = {
+                "title": title, 
+                "link": link, 
+                "summary": summary,
+                "category": "분석대기",
+                "sentiment": "분석대기",
+                "reason": "OpenAI 연동 대기중",
+                "pub_date": item.get("pubDate", ""),
+                "created_at": now_utc
+            }
+            
+            crud.create_news(db, news_data)
+            print(f"✅ 신규 뉴스 적재 완료 (전처리됨): {title[:20]}...")
+                
+    except Exception as e:
+        print(f"🚨 뉴스 파이프라인 에러: {e}")
+    finally:
+        db.close()
+
+
+# =====================================================================
+# [백그라운드 스케줄러] 
 # =====================================================================
 scheduler = BackgroundScheduler()
 
@@ -379,12 +442,19 @@ scheduler = BackgroundScheduler()
 def startup_event():
     # 서버 시작 시 최초 1회 즉시 실행
     collect_and_save_market_data()
+    
+    # 서버 구동 시 뉴스 즉시 수집 1회 실행
+    run_news_pipeline()
 
     # DEV_MODE면 1분, 아니면 5분마다 실행
     interval = 1 if DEV_MODE else 5
     scheduler.add_job(collect_and_save_market_data, "interval", minutes=interval)
+    
+    # 뉴스 수집은 API 호출 비용 방지를 위해 30분 주기로 예약
+    scheduler.add_job(run_news_pipeline, "interval", minutes=30)
+    
     scheduler.start()
-    print(f"⏰ 스케줄러 시작 ({interval}분 간격)")
+    print(f"⏰ 스케줄러 시작 (지수 {interval}분 / 뉴스 30분 간격)")
 
 @app.on_event("shutdown")
 def shutdown_event():
@@ -422,6 +492,18 @@ def get_market_indices(db: Session = Depends(get_db)):
         "data": data,
         "updated_at": latest_updated_at.isoformat() if latest_updated_at else None
     }
+
+
+# 수집된 뉴스를 프론트엔드로 전달하는 API 엔드포인트
+@app.get("/api/v1/market/news")
+def get_market_news(db: Session = Depends(get_db)):
+    news_list = crud.get_latest_news(db)
+    return {
+        "success": True,
+        "data": news_list
+    }
+
+
 # =====================================================================
 # [설문조사] 저장 및 포트폴리오 추천 반환
 # =====================================================================
