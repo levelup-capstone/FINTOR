@@ -80,14 +80,12 @@ class UserLevel(Base):
 class News(Base):
     __tablename__ = "news"
 
-    id         = Column(Integer, primary_key=True, index=True)
-    title      = Column(String, nullable=False)
-    link       = Column(String, unique=True, index=True, nullable=False) # 2단계 Deduplication용
-    summary    = Column(String, nullable=False)
-    
-    category   = Column(String, nullable=False, default="분석대기")  
-    sentiment  = Column(String, nullable=False, default="분석대기")  
-    reason     = Column(String, nullable=False, default="OpenAI 연동 대기중")  
-    
-    pub_date   = Column(String, nullable=False)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    id          = Column(Integer, primary_key=True, index=True)
+    title       = Column(String, nullable=False)
+    description = Column(String, nullable=False)
+    category    = Column(String, nullable=False, default="분석대기")
+    sentiment   = Column(String, nullable=False, default="분석대기")  
+    reason      = Column(String, nullable=False, default="OpenAI 연동 대기중")  
+    link        = Column(String, unique=True, index=True, nullable=False) # 이미 존재하는 뉴스 중복 방지 처리에 사용
+    pub_date    = Column(String, nullable=False)
+    created_at  = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

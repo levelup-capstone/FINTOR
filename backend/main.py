@@ -410,13 +410,13 @@ def run_news_pipeline():
 
             # [3단계 전처리] 정규표현식으로 HTML 태그 제거
             title = clean_html(item.get("title", ""))
-            summary = clean_html(item.get("description", ""))
+            description = clean_html(item.get("description", ""))
 
             # DB 적재 페이로드 (LLM 분석 결과는 일단 기본값으로 세팅됨)
             news_data = {
                 "title": title, 
                 "link": link, 
-                "summary": summary,
+                "description": description,
                 "category": "분석대기",
                 "sentiment": "분석대기",
                 "reason": "OpenAI 연동 대기중",
@@ -441,13 +441,13 @@ scheduler = BackgroundScheduler()
 @app.on_event("startup")
 def startup_event():
     # 서버 시작 시 최초 1회 즉시 실행
-    collect_and_save_market_data()
+    # collect_and_save_market_data() // 개발 시 빈번한 호출로 인한 차단 방지를 위해 임시로 주석처리함
     
     # 서버 구동 시 뉴스 즉시 수집 1회 실행
     run_news_pipeline()
 
     # DEV_MODE면 1분, 아니면 5분마다 실행
-    interval = 1 if DEV_MODE else 5
+    interval = 1 if DEV_MODE else 30
     scheduler.add_job(collect_and_save_market_data, "interval", minutes=interval)
     
     # 뉴스 수집은 API 호출 비용 방지를 위해 30분 주기로 예약
