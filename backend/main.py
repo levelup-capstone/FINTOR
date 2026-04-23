@@ -5,6 +5,7 @@ import time
 import re
 import yfinance as yf
 import finnhub
+import json
 from requests import Session as ReqSession
 from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, Depends, HTTPException
@@ -13,8 +14,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.orm import Session
+from bs4 import BeautifulSoup
 import models, schemas, crud
 from database import engine, get_db
+import google.generativeai as genai
 
 # DB 테이블 생성
 models.Base.metadata.create_all(bind=engine)
@@ -44,6 +47,7 @@ KIS_APP_SECRET = os.getenv("KIS_APP_SECRET")
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID")
 NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 security = HTTPBearer()
 
@@ -381,6 +385,59 @@ def clean_html(raw_html: str) -> str:
     clean_text = re.sub(r'&quot;|&amp;|&lt;|&gt;|&apos;', ' ', clean_text)
     return clean_text.strip()
 
+def scrape_naver_news_body(url: str) -> str:
+    """네이버 뉴스 링크에 접속하여 본문 텍스트만 추출합니다."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    }
+    try:
+        res = requests.get(url, headers=headers, timeout=5)
+        if res.status_code == 200:
+            soup = BeautifulSoup(res.text, "lxml")
+            body_area = soup.select_one("#dic_area")
+            if body_area:
+                return body_area.get_text(separator=" ", strip=True)
+        return ""
+    except Exception as e:
+        print(f"⚠️ 본문 스크래핑 에러 [{url}]: {e}", flush=True)
+        return ""
+
+def analyze_news_with_gemini(title: str, full_text: str) -> dict:
+    # Gemini 3.1 Flash-Lite를 이용해 뉴스 본문을 분석합니다.
+    if not GEMINI_API_KEY:
+        return {"category": "오류", "sentiment": "중립", "reason": "API 키 누락"}
+
+    genai.configure(api_key=GEMINI_API_KEY)
+    model = genai.GenerativeModel('gemini-3.1-flash-lite-preview')
+    
+    truncated_text = full_text[:3000] 
+    
+    prompt = f"""
+    당신은 전문 금융 애널리스트입니다.
+    다음 뉴스 기사의 제목과 [본문]을 심층 분석하여, 반드시 아래의 JSON 형식으로만 응답해 주세요.
+
+    [뉴스 기사]
+    제목: {title}
+    본문: {truncated_text}
+
+    [출력 형식 (JSON)]
+    {{
+        "category": "주식, ETF, 예적금, 채권, 암호화폐, 원화, 금, 기타 중 택1",
+        "sentiment": "호재, 악재, 중립 중 택1",
+        "reason": "이 기사가 왜 해당 감성(호재/악재/중립)인지 본문 내용을 바탕으로 50자 이내로 명확하게 존댓말로 작성"
+    }}
+    """
+
+    try:
+        response = model.generate_content(
+            prompt,
+            generation_config={"response_mime_type": "application/json"}
+        )
+        return json.loads(response.text)
+    except Exception as e:
+        print(f"🚨 Gemini 분석 에러: {e}", flush=True)
+        return {"category": "오류", "sentiment": "중립", "reason": "분석 실패"}
+
 def run_news_pipeline():
     """뉴스 데이터 수집, 필터링, 전처리 및 DB 적재 (오늘 발행된 기사만 대상, 데이터 분석 미구현)"""
     print(f"📰 뉴스 파이프라인 가동 ({datetime.now(KST).strftime('%H:%M:%S')} KST)", flush=True)
@@ -395,7 +452,7 @@ def run_news_pipeline():
         
         target_keywords = [
             "주식", "증시", "금리", "환율", "코인", 
-            "채권", "원자재", "금", "은", "원화"
+            "채권", "원자재", "금", "은", "원화, 속보"
         ]
         
         for keyword in target_keywords:
@@ -439,22 +496,45 @@ def run_news_pipeline():
                 title = clean_html(item.get("title", ""))
                 description = clean_html(item.get("description", ""))
 
-                # DB 적재 (created_at은 현재 수집 시간인 now_utc 사용)
+                # 본문 스크래핑 추가
+                full_text = scrape_naver_news_body(link)
+                if not full_text:
+                    full_text = description
+
+                # [4단계 AI 심층 분석]
+                print(f"🤖 Gemini 본문 분석 중 [{title}]", flush=True)
+                
+                # 1. 분석 시작 시간 기록
+                start_time = time.time()
+                
+                # 2. AI 분석 실행
+                ai_result = analyze_news_with_gemini(title, full_text)
+                
+                # 3. 분석 종료 시간 기록 및 소요 시간 계산
+                end_time = time.time()
+                execution_time = end_time - start_time
+                
+                # 4. 소요 시간 로그 출력 (소수점 둘째 자리까지 표시)
+                print(f"⏱️ 분석 완료. 소요 시간: {execution_time:.2f}초", flush=True)
+
+                # DB 적재 
                 news_data = {
                     "title": title, 
                     "link": link, 
                     "description": description,
-                    "category": "분석대기",
-                    "sentiment": "분석대기",
-                    "reason": "OpenAI 연동 대기중",
+                    "category": ai_result.get("category", "오류"),
+                    "sentiment": ai_result.get("sentiment", "중립"),
+                    "reason": ai_result.get("reason", "분석 실패"),
                     "pub_date": pub_date_str,
                     "created_at": now_utc
                 }
                 
                 crud.create_news(db, news_data)
-                print(f"✅ 신규 뉴스 적재 완료 [{keyword}]: {title[:20]}...", flush=True)
+                print(f"✅ 뉴스 적재 완료 [{keyword}] - {ai_result.get('sentiment')}: {ai_result.get('reason')}", flush=True)
+                
+                # 무료 API RPM 초과 방지를 위한 안전장치
+                time.sleep(2.1)
 
-            
             if skip_count > 0:
                 print(f"📊 [{keyword}] 검색 결과 중 총 {skip_count}개의 중복 또는 과거 기사가 제외되었습니다.", flush=True)
                 
@@ -477,7 +557,7 @@ def startup_event():
     # 서버 구동 시 뉴스 즉시 수집 1회 실행
     run_news_pipeline()
 
-    # DEV_MODE면 1분, 아니면 5분마다 실행
+    # 호출 과부하를 방지하기 위해 5분마다 실행
     index_interval = 5
     scheduler.add_job(collect_and_save_market_data, "interval", minutes=index_interval)
     
