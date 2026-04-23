@@ -382,53 +382,84 @@ def clean_html(raw_html: str) -> str:
     return clean_text.strip()
 
 def run_news_pipeline():
-    """뉴스 데이터 수집, 필터링, 전처리 및 DB 적재 (OpenAI 연동 전단계)"""
-    print(f"📰 뉴스 파이프라인 가동 ({datetime.now(KST).strftime('%H:%M:%S')} KST)")
+    """뉴스 데이터 수집, 필터링, 전처리 및 DB 적재 (오늘 발행된 기사만 대상, 데이터 분석 미구현)"""
+    print(f"📰 뉴스 파이프라인 가동 ({datetime.now(KST).strftime('%H:%M:%S')} KST)", flush=True)
     db: Session = next(get_db())
     
     try:
         url = "https://openapi.naver.com/v1/search/news.json"
         headers = {"X-Naver-Client-Id": NAVER_CLIENT_ID, "X-Naver-Client-Secret": NAVER_CLIENT_SECRET}
-        params = {"query": "경제 OR 증시 OR 금리 OR 투자", "display": 50, "sort": "date"}
         
-        res = requests.get(url, headers=headers, params=params)
-        if res.status_code != 200:
-            print("🚨 네이버 API 호출 실패")
-            return
-            
-        # DB 저장은 표준 UTC 시간대 적용
         now_utc = datetime.now(timezone.utc)
-
-        for item in res.json().get("items", []):
-            link = item.get("link")
+        start_of_today = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        target_keywords = [
+            "주식", "증시", "금리", "환율", "코인", 
+            "채권", "원자재", "금", "은", "원화"
+        ]
+        
+        for keyword in target_keywords:
+            skip_count = 0
+            # 각 키워드당 15개씩 요청
+            params = {"query": keyword, "display": 15, "sort": "date"}
+            res = requests.get(url, headers=headers, params=params)
             
-            # [1단계 필터링] 네이버 포털 기사만 통과
-            if "n.news.naver.com" not in link: continue
-            
-            # [2단계 중복 제거] DB 교차 검증 (Deduplication)
-            if crud.get_news_by_link(db, link): continue
+            if res.status_code != 200:
+                print(f"🚨 네이버 API 호출 실패 [{keyword}]", flush=True)
+                continue 
 
-            # [3단계 전처리] 정규표현식으로 HTML 태그 제거
-            title = clean_html(item.get("title", ""))
-            description = clean_html(item.get("description", ""))
+            for item in res.json().get("items", []):
+                link = item.get("link")
+                pub_date_str = item.get("pubDate", "")
+                
+                # [0단계 발행일 필터링] 오늘 발행된 기사인지 검증
+                try:
+                    # 네이버 API 날짜 형식: "Wed, 21 Jan 2026 08:03:00 +0900"
+                    pub_date = datetime.strptime(pub_date_str, "%a, %d %b %Y %H:%M:%S %z")
+                    
+                    # 오늘(start_of_today)보다 이전 시간의 기사는 스킵
+                    if pub_date < start_of_today:
+                        continue 
+                except ValueError:
+                    # 날짜 형식이 다르거나 파싱 불가 시 수집 안정성을 위해 스킵
+                    continue
 
-            # DB 적재 페이로드 (LLM 분석 결과는 일단 기본값으로 세팅됨)
-            news_data = {
-                "title": title, 
-                "link": link, 
-                "description": description,
-                "category": "분석대기",
-                "sentiment": "분석대기",
-                "reason": "OpenAI 연동 대기중",
-                "pub_date": item.get("pubDate", ""),
-                "created_at": now_utc
-            }
+                # [1단계 출처 및 섹션 필터링] 
+                if "n.news.naver.com" not in link: continue
+                if not ("sid=101" in link): # sid 101 = 경제 파트 기사 
+                    continue
+                
+                # [2단계 중복 제거] DB 교차 검증 및 스킵 로그 출력
+                if crud.get_news_by_link(db, link):
+                    skip_count += 1
+                    # print(f"⏩ 중복 기사 스킵 [{keyword}] (현재 누적: {skip_count}개)", flush=True)
+                    continue
+
+                # [3단계 전처리] 정규표현식으로 HTML 태그 제거
+                title = clean_html(item.get("title", ""))
+                description = clean_html(item.get("description", ""))
+
+                # DB 적재 (created_at은 현재 수집 시간인 now_utc 사용)
+                news_data = {
+                    "title": title, 
+                    "link": link, 
+                    "description": description,
+                    "category": "분석대기",
+                    "sentiment": "분석대기",
+                    "reason": "OpenAI 연동 대기중",
+                    "pub_date": pub_date_str,
+                    "created_at": now_utc
+                }
+                
+                crud.create_news(db, news_data)
+                print(f"✅ 신규 뉴스 적재 완료 [{keyword}]: {title[:20]}...", flush=True)
+
             
-            crud.create_news(db, news_data)
-            print(f"✅ 신규 뉴스 적재 완료 (전처리됨): {title[:20]}...")
+            if skip_count > 0:
+                print(f"📊 [{keyword}] 검색 결과 중 총 {skip_count}개의 중복 또는 과거 기사가 제외되었습니다.", flush=True)
                 
     except Exception as e:
-        print(f"🚨 뉴스 파이프라인 에러: {e}")
+        print(f"🚨 뉴스 파이프라인 에러: {e}", flush=True)
     finally:
         db.close()
 
@@ -447,14 +478,15 @@ def startup_event():
     run_news_pipeline()
 
     # DEV_MODE면 1분, 아니면 5분마다 실행
-    interval = 1 if DEV_MODE else 30
-    scheduler.add_job(collect_and_save_market_data, "interval", minutes=interval)
+    index_interval = 5
+    scheduler.add_job(collect_and_save_market_data, "interval", minutes=index_interval)
     
-    # 뉴스 수집은 API 호출 비용 방지를 위해 30분 주기로 예약
-    scheduler.add_job(run_news_pipeline, "interval", minutes=30)
+    # 뉴스 수집은 API 호출 비용 방지를 위해 30분 주기로 예약 (개발용 10분)
+    news_interval = 10 if DEV_MODE else 30
+    scheduler.add_job(run_news_pipeline, "interval", minutes=news_interval)
     
     scheduler.start()
-    print(f"⏰ 스케줄러 시작 (지수 {interval}분 / 뉴스 30분 간격)")
+    print(f"⏰ 스케줄러 시작 (지수 {index_interval}분 / 뉴스 {news_interval}분 간격)")
 
 @app.on_event("shutdown")
 def shutdown_event():
