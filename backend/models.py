@@ -58,7 +58,7 @@ class Portfolio(Base):
     __tablename__ = "portfolios"
 
     id          = Column(Integer, primary_key=True, index=True)
-    user_id     = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True)
+    user_id     = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
     template_id = Column(Integer, ForeignKey("portfolio_templates.id"), nullable=True)
     profile_id  = Column(String, nullable=False)
     name        = Column(String, nullable=False)
@@ -85,7 +85,7 @@ class UserLevel(Base):
     __tablename__ = "user_levels"
 
     id         = Column(Integer, primary_key=True, index=True)
-    user_id    = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True)
+    user_id    = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
     level      = Column(Integer, default=1, nullable=False)
     exp        = Column(Integer, default=0, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),

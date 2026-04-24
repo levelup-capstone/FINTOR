@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 import models, schemas, crud
 from database import engine, get_db
+from seed import seed as run_seed
 
 # DB 테이블 생성
 models.Base.metadata.create_all(bind=engine)
@@ -387,6 +388,7 @@ scheduler = BackgroundScheduler()
 
 @app.on_event("startup")
 def startup_event():
+    run_seed()
     # 서버 시작 시 최초 1회 즉시 실행
     collect_and_save_market_data()
 
