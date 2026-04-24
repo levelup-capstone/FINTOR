@@ -41,19 +41,34 @@ class MarketIndex(Base):
     source       = Column(String, default="")               # "kis", "finnhub", "yfinance"
     updated_at   = Column(DateTime(timezone=True))
 
+class PortfolioTemplate(Base):
+    __tablename__ = "portfolio_templates"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    risk_level  = Column(Integer, nullable=False, index=True)
+    profile_id  = Column(String, nullable=False, unique=True)
+    title       = Column(String, nullable=False)
+    description = Column(String, nullable=True)
+    tags        = Column(JSONB, nullable=False)       # ["etf", "bonds", ...]
+    allocations = Column(JSONB, nullable=False)       # [{"asset": "etf", "label": "ETF", "ratio": 30}, ...]
+    created_at  = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
 class Portfolio(Base):
     __tablename__ = "portfolios"
 
-    id         = Column(Integer, primary_key=True, index=True)
-    user_id    = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True)
-    profile_id = Column(String, nullable=False)   # "stable", "aggressive" 등
-    name       = Column(String, nullable=False)   # "안정형", "공격형" 등
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
-                        onupdate=lambda: datetime.now(timezone.utc))
+    id          = Column(Integer, primary_key=True, index=True)
+    user_id     = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True)
+    template_id = Column(Integer, ForeignKey("portfolio_templates.id"), nullable=True)
+    profile_id  = Column(String, nullable=False)
+    name        = Column(String, nullable=False)
+    created_at  = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at  = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+                         onupdate=lambda: datetime.now(timezone.utc))
 
     allocations = relationship("PortfolioAllocation", back_populates="portfolio",
                                cascade="all, delete-orphan")
+    template    = relationship("PortfolioTemplate")
 
 
 class PortfolioAllocation(Base):
@@ -61,8 +76,8 @@ class PortfolioAllocation(Base):
 
     id           = Column(Integer, primary_key=True, index=True)
     portfolio_id = Column(Integer, ForeignKey("portfolios.id"), nullable=False)
-    asset        = Column(String, nullable=False)   # "deposit", "bonds", ...
-    ratio        = Column(Integer, nullable=False)  # 35, 30, ...
+    asset        = Column(String, nullable=False)
+    ratio        = Column(Integer, nullable=False)
 
     portfolio = relationship("Portfolio", back_populates="allocations")
 

@@ -433,6 +433,58 @@ def get_market_indices(db: Session = Depends(get_db)):
         "updated_at": latest_updated_at.isoformat() if latest_updated_at else None
     }
 # =====================================================================
+# [포트폴리오 추천] Risk Score 계산 로직
+# =====================================================================
+
+RISK_TYPE_SCORE = {"v-low": 1, "low": 2, "high": 3, "v-high": 4}
+EXPERIENCE_SCORE = {"none": 0, "under-6m": 1, "6m-1y": 2, "1y-3y": 3, "3y-5y": 4, "over-5y": 5}
+PERIOD_SCORE = {"short": 1, "s-mid": 2, "m-long": 3, "long": 4}
+GOAL_SCORE = {
+    "saving": 1, "retirement": 1, "home-ownership": 1,
+    "investment-management": 2, "others": 2,
+    "growth": 3,
+}
+AGE_SCORE = {"under-20": 2, "20y": 2, "30y": 1, "40y": 1, "50y": 0, "over-60": 0}
+ASSETS_SCORE = {
+    "under-500": 0, "500-1000": 0,
+    "1000-5000": 1, "5000-1m": 1,
+    "1m-3m": 2, "over-3m": 2, "over_3m": 2,
+}
+INCOME_SCORE = {
+    "under-200": 0, "200-400": 0,
+    "400-600": 1, "600-800": 1,
+    "800-1000": 2, "over-1000": 2,
+}
+RISK_LABELS = {1: "안정형", 2: "안정추구형", 3: "위험중립형", 4: "적극투자형", 5: "공격투자형"}
+
+
+def calc_risk_score(survey: schemas.SurveyCreate) -> int:
+    return (
+        RISK_TYPE_SCORE.get(survey.risk_type, 1)
+        + EXPERIENCE_SCORE.get(survey.investment_experience, 0)
+        + PERIOD_SCORE.get(survey.preferred_period, 1)
+        + GOAL_SCORE.get(survey.investment_goal, 1)
+        + AGE_SCORE.get(survey.age_group, 1)
+        + ASSETS_SCORE.get(survey.investment_assets, 0)
+        + INCOME_SCORE.get(survey.monthly_income, 0)
+    )
+
+
+def score_to_level(score: int) -> int:
+    if score <= 5:    return 1
+    elif score <= 8:  return 2
+    elif score <= 11: return 3
+    elif score <= 14: return 4
+    else:             return 5
+
+
+def recommend_templates(db: Session, risk_level: int, preferred_assets: list) -> list:
+    templates = crud.get_templates_by_risk_level(db, risk_level)
+    user_set = set(preferred_assets)
+    return sorted(templates, key=lambda t: (-len(user_set & set(t.tags)), t.id))[:3]
+
+
+# =====================================================================
 # [설문조사] 저장 및 포트폴리오 추천 반환
 # =====================================================================
 
@@ -451,52 +503,31 @@ def submit_survey(
                 "data": None
             })
 
-        new_survey = models.Survey(
-            user_id=current_user.id,
-            **survey_data.dict()
-        )
+        new_survey = models.Survey(user_id=current_user.id, **survey_data.model_dump())
         db.add(new_survey)
         db.commit()
 
-        dummy_portfolios = [
-            {
-                "id": "stable",
-                "name": "안정형",
-                "allocations": [
-                    {"asset": "deposit",        "ratio": 35},
-                    {"asset": "bonds",           "ratio": 30},
-                    {"asset": "bluechip-stock",  "ratio": 20},
-                    {"asset": "gold",            "ratio": 10},
-                    {"asset": "krw",             "ratio": 5}
-                ]
-            },
-            {
-                "id": "risk-neutral",
-                "name": "위험중립형",
-                "allocations": [
-                    {"asset": "etf",             "ratio": 30},
-                    {"asset": "bluechip-stock",  "ratio": 30},
-                    {"asset": "growth-stock",    "ratio": 20},
-                    {"asset": "bonds",           "ratio": 10},
-                    {"asset": "krw",             "ratio": 10}
-                ]
-            },
-            {
-                "id": "aggressive",
-                "name": "공격투자형",
-                "allocations": [
-                    {"asset": "growth-stock",    "ratio": 40},
-                    {"asset": "coin",            "ratio": 30},
-                    {"asset": "etf",             "ratio": 20},
-                    {"asset": "krw",             "ratio": 10}
-                ]
-            }
-        ]
+        score      = calc_risk_score(survey_data)
+        risk_level = score_to_level(score)
+        risk_label = RISK_LABELS[risk_level]
+        templates  = recommend_templates(db, risk_level, survey_data.preferred_assets)
 
         return {
             "success": True,
-            "message": "설문이 성공적으로 저장되었습니다.",
-            "data": {"portfolios": dummy_portfolios}
+            "message": "설문이 완료되어 포트폴리오를 추천드립니다.",
+            "data": {
+                "risk_level": risk_level,
+                "risk_label": risk_label,
+                "recommended_portfolios": [
+                    {
+                        "template_id": t.id,
+                        "title":       t.title,
+                        "description": t.description,
+                        "allocations": t.allocations,
+                    }
+                    for t in templates
+                ],
+            },
         }
 
     except Exception as e:
@@ -514,14 +545,6 @@ def submit_survey(
 
 @app.get("/api/v1/portfolios")
 def get_portfolio(userid: int, db: Session = Depends(get_db)):
-    # 파라미터 검증
-    if not userid:
-        return JSONResponse(status_code=400, content={
-            "success": False,
-            "error": {"code": "INVALID_PARAMETER", "message": "잘못된 요청 파라미터입니다."}
-        })
-
-    # 유저 존재 여부 확인
     user = crud.get_user_by_id(db, user_id=userid)
     if not user:
         return JSONResponse(status_code=404, content={
@@ -529,7 +552,6 @@ def get_portfolio(userid: int, db: Session = Depends(get_db)):
             "error": {"code": "USER_NOT_FOUND", "message": "해당 사용자를 찾을 수 없습니다."}
         })
 
-    # 포트폴리오 조회
     portfolio = crud.get_portfolio_by_user_id(db, user_id=userid)
     if not portfolio:
         return JSONResponse(status_code=404, content={
@@ -537,16 +559,24 @@ def get_portfolio(userid: int, db: Session = Depends(get_db)):
             "error": {"code": "DATA_NOT_FOUND", "message": "포트폴리오 정보가 존재하지 않습니다."}
         })
 
+    tmpl  = portfolio.template
+    today = datetime.now(KST).date()
+    start = portfolio.created_at.date() if portfolio.created_at else today
+    d_day = (today - start).days
+
     return {
         "success": True,
         "data": {
-            "portfolios": {
-                "id":   portfolio.profile_id,
-                "name": portfolio.name,
+            "portfolio": {
+                "template_id": tmpl.id          if tmpl else None,
+                "risk_level":  tmpl.risk_level  if tmpl else None,
+                "risk_label":  RISK_LABELS.get(tmpl.risk_level) if tmpl else None,
+                "title":       tmpl.title       if tmpl else portfolio.name,
                 "allocations": [
                     {"asset": a.asset, "ratio": a.ratio}
                     for a in portfolio.allocations
-                ]
+                ],
+                "d_day": d_day,
             }
         }
     }
@@ -554,7 +584,6 @@ def get_portfolio(userid: int, db: Session = Depends(get_db)):
 
 @app.post("/api/v1/portfolios", status_code=201)
 def create_portfolio(req: schemas.PortfolioCreate, db: Session = Depends(get_db)):
-    # 유저 존재 여부 확인
     user = crud.get_user_by_id(db, user_id=req.userid)
     if not user:
         return JSONResponse(status_code=404, content={
@@ -562,24 +591,21 @@ def create_portfolio(req: schemas.PortfolioCreate, db: Session = Depends(get_db)
             "error": {"code": "USER_NOT_FOUND", "message": "해당 사용자를 찾을 수 없습니다."}
         })
 
-    # 비율 합계 검증 (100%여야 함)
-    total_ratio = sum(a.ratio for a in req.allocations)
-    if total_ratio != 100:
-        return JSONResponse(status_code=400, content={
+    template = crud.get_template_by_id(db, template_id=req.template_id)
+    if not template:
+        return JSONResponse(status_code=404, content={
             "success": False,
-            "error": {
-                "code": "INVALID_PARAMETER",
-                "message": f"자산 배분 비율의 합이 100이어야 합니다. (현재: {total_ratio})"
-            }
+            "error": {"code": "TEMPLATE_NOT_FOUND", "message": "포트폴리오 템플릿을 찾을 수 없습니다."}
         })
 
     try:
         portfolio = crud.create_portfolio(
-            db=db,
-            user_id=req.userid,
-            profile_id=req.id,
-            name=req.name,
-            allocations=[a.model_dump() for a in req.allocations]
+            db          = db,
+            user_id     = req.userid,
+            template_id = template.id,
+            profile_id  = template.profile_id,
+            name        = RISK_LABELS.get(template.risk_level, template.title),
+            allocations = template.allocations,
         )
     except Exception as e:
         print(f"🚨 포트폴리오 생성 오류: {str(e)}")
@@ -591,13 +617,15 @@ def create_portfolio(req: schemas.PortfolioCreate, db: Session = Depends(get_db)
     return {
         "success": True,
         "data": {
-            "portfolios": {
-                "id":   portfolio.profile_id,
-                "name": portfolio.name,
+            "portfolio": {
+                "template_id": template.id,
+                "risk_level":  template.risk_level,
+                "risk_label":  RISK_LABELS.get(template.risk_level),
+                "title":       template.title,
                 "allocations": [
                     {"asset": a.asset, "ratio": a.ratio}
                     for a in portfolio.allocations
-                ]
+                ],
             }
         }
     }

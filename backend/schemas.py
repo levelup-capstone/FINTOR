@@ -34,13 +34,16 @@ class AllocationItem(BaseModel):
     asset: str
     ratio: int
 
-class PortfolioItem(BaseModel):
-    id: str
-    name: str
+class RecommendedPortfolio(BaseModel):
+    template_id: int
+    title: str
+    description: Optional[str] = None
     allocations: List[AllocationItem]
 
 class SurveyResponseData(BaseModel):
-    portfolios: List[PortfolioItem]
+    risk_level: int
+    risk_label: str
+    recommended_portfolios: List[RecommendedPortfolio]
 
 class SurveyResponse(BaseModel):
     success: bool
@@ -50,17 +53,18 @@ class SurveyResponse(BaseModel):
 # 3. 포트폴리오(Portfolio) 관련 스키마
 class PortfolioCreate(BaseModel):
     userid: int
-    id: str        # "stable", "aggressive" 등 성향 식별자
-    name: str      # "안정형", "공격형" 등
-    allocations: List[AllocationItem]
+    template_id: int
 
 class PortfolioDetail(BaseModel):
-    id: str
-    name: str
+    template_id: Optional[int] = None
+    risk_level: Optional[int] = None
+    risk_label: Optional[str] = None
+    title: Optional[str] = None
     allocations: List[AllocationItem]
+    d_day: int
 
 class PortfolioResponseData(BaseModel):
-    portfolios: PortfolioDetail
+    portfolio: PortfolioDetail
 
 class PortfolioResponse(BaseModel):
     success: bool
