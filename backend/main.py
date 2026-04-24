@@ -24,7 +24,8 @@ models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Fintor Auth Server")
 
-DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
+# DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
+DEV_MODE = False
 KST = timezone(timedelta(hours=9))
 
 # --- [CORS 설정] ---
@@ -48,6 +49,8 @@ FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID")
 NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+TOTAL_GEMINI_TOKENS = 0
 
 security = HTTPBearer()
 
@@ -403,6 +406,8 @@ def scrape_naver_news_body(url: str) -> str:
         return ""
 
 def analyze_news_with_gemini(title: str, full_text: str) -> dict:
+    global TOTAL_GEMINI_TOKENS
+    
     # Gemini 3.1 Flash-Lite를 이용해 뉴스 본문을 분석합니다.
     if not GEMINI_API_KEY:
         return {"category": "오류", "sentiment": "중립", "reason": "API 키 누락"}
@@ -422,8 +427,8 @@ def analyze_news_with_gemini(title: str, full_text: str) -> dict:
 
     [출력 형식 (JSON)]
     {{
-        "category": "주식, ETF, 예적금, 채권, 암호화폐, 원화, 금, 기타 중 택1",
-        "sentiment": "호재, 악재, 중립 중 택1",
+        "category": "주식, ETF, 예적금, 채권, 암호화폐, 원화, 금, 기타 중 반드시 택1",
+        "sentiment": "호재, 악재, 중립 중 반드시 택1",
         "reason": "이 기사가 왜 해당 감성(호재/악재/중립)인지 본문 내용을 바탕으로 50자 이내로 명확하게 존댓말로 작성"
     }}
     """
@@ -433,6 +438,14 @@ def analyze_news_with_gemini(title: str, full_text: str) -> dict:
             prompt,
             generation_config={"response_mime_type": "application/json"}
         )
+
+        # 토큰 사용량 추출 및 로그 출력
+        usage = response.usage_metadata
+        current_used = usage.total_token_count
+        TOTAL_GEMINI_TOKENS += current_used  # 기존 누적값에 이번 호출값을 더함
+        
+        # print(f"📊 [토큰 사용량] 입력: {usage.prompt_token_count} / 출력: {usage.candidates_token_count} / 총합: {usage.total_token_count}", flush=True)
+
         return json.loads(response.text)
     except Exception as e:
         print(f"🚨 Gemini 분석 에러: {e}", flush=True)
@@ -442,7 +455,8 @@ def run_news_pipeline():
     """뉴스 데이터 수집, 필터링, 전처리 및 DB 적재 (오늘 발행된 기사만 대상, 데이터 분석 미구현)"""
     print(f"📰 뉴스 파이프라인 가동 ({datetime.now(KST).strftime('%H:%M:%S')} KST)", flush=True)
     db: Session = next(get_db())
-    
+    global TOTAL_GEMINI_TOKENS
+
     try:
         url = "https://openapi.naver.com/v1/search/news.json"
         headers = {"X-Naver-Client-Id": NAVER_CLIENT_ID, "X-Naver-Client-Secret": NAVER_CLIENT_SECRET}
@@ -532,11 +546,15 @@ def run_news_pipeline():
                 crud.create_news(db, news_data)
                 print(f"✅ 뉴스 적재 완료 [{keyword}] - {ai_result.get('sentiment')}: {ai_result.get('reason')}", flush=True)
                 
-                # 무료 API RPM 초과 방지를 위한 안전장치
+                # 무료 API RPM 초과 방지를 위한 안전장치ㅎ
                 time.sleep(2.1)
 
             if skip_count > 0:
                 print(f"📊 [{keyword}] 검색 결과 중 총 {skip_count}개의 중복 또는 과거 기사가 제외되었습니다.", flush=True)
+        
+        print("-" * 50, flush=True)
+        print(f"현재까지 누적된 총 Gemini 토큰 사용량: {TOTAL_GEMINI_TOKENS}개", flush=True)
+        print("-" * 50, flush=True)
                 
     except Exception as e:
         print(f"🚨 뉴스 파이프라인 에러: {e}", flush=True)
@@ -551,6 +569,12 @@ scheduler = BackgroundScheduler()
 
 @app.on_event("startup")
 def startup_event():
+    if DEV_MODE:
+        print(f"현재 개발모드 입니다. (뉴스 파이프라인 10분마다 실행)")
+    else:
+        print(f"현재 운영모드 입니다. (뉴스 파이프라인 30분마다 실행)")
+
+
     # 서버 시작 시 최초 1회 즉시 실행
     # collect_and_save_market_data() // 개발 시 빈번한 호출로 인한 차단 방지를 위해 임시로 주석처리함
     
