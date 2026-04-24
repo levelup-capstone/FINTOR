@@ -1,4 +1,7 @@
+import { Link, useLocation } from 'react-router';
+
 export function Sidebar() {
+  const location = useLocation();
   // localStorage에서 로그인 시 저장된 사용자 정보 읽기
   const loginData = (() => {
     try {
@@ -9,6 +12,16 @@ export function Sidebar() {
   })();
   const nickname: string = loginData?.nickname ?? '사용자';
   const profileImage: string | null = loginData?.profileImage ?? null;
+
+  const menuItems = [
+    { label: '대시보드', to: '/dashboard', icon: 'dashboard' },
+    { label: '기록', to: '/dashboard/record', icon: 'edit_note' },
+    { label: '퀴즈', to: '/dashboard/quiz', icon: 'quiz' },
+    { label: '뉴스', to: '/dashboard/news', icon: 'newspaper' },
+    { label: '설정', to: '/dashboard/settings', icon: 'settings' },
+  ];
+  const activeClass = 'flex items-center gap-3 p-3 bg-primary text-white rounded-lg shadow-lg shadow-[#1A237E]/20 transition-transform';
+  const inactiveClass = 'flex items-center gap-3 p-3 text-slate-600 hover:bg-slate-200 rounded-lg transition-transform hover:translate-x-1';
 
   return (
     <aside className="hidden lg:flex flex-col w-64 space-y-6">
@@ -36,26 +49,22 @@ export function Sidebar() {
         </button>
       </div>
       <nav className="space-y-2">
-        <a className="flex items-center gap-3 p-3 bg-primary text-white rounded-lg shadow-lg shadow-[#1A237E]/20 transition-transform" href="#">
-          <span className="material-symbols-outlined">dashboard</span>
-          <span className="font-semibold text-sm">대시보드</span>
-        </a>
-        <a className="flex items-center gap-3 p-3 text-slate-600 hover:bg-slate-200 rounded-lg transition-transform hover:translate-x-1" href="#">
-          <span className="material-symbols-outlined">edit_note</span>
-          <span className="font-semibold text-sm">기록</span>
-        </a>
-        <a className="flex items-center gap-3 p-3 text-slate-600 hover:bg-slate-200 rounded-lg transition-transform hover:translate-x-1" href="#">
-          <span className="material-symbols-outlined">quiz</span>
-          <span className="font-semibold text-sm">퀴즈</span>
-        </a>
-        <a className="flex items-center gap-3 p-3 text-slate-600 hover:bg-slate-200 rounded-lg transition-transform hover:translate-x-1" href="#">
-          <span className="material-symbols-outlined">newspaper</span>
-          <span className="font-semibold text-sm">뉴스</span>
-        </a>
-        <a className="flex items-center gap-3 p-3 text-slate-600 hover:bg-slate-200 rounded-lg transition-transform hover:translate-x-1" href="#">
-          <span className="material-symbols-outlined">settings</span>
-          <span className="font-semibold text-sm">설정</span>
-        </a>
+        {menuItems.map((item) => {
+          const isActive =
+            item.to === '/dashboard'
+              ? location.pathname === '/dashboard' || location.pathname === '/dashboard/'
+              : location.pathname.startsWith(item.to);
+          return (
+            <Link
+              key={item.to}
+              to={item.to}
+              className={isActive ? activeClass : inactiveClass}
+            >
+              <span className="material-symbols-outlined">{item.icon}</span>
+              <span className="font-semibold text-sm">{item.label}</span>
+            </Link>
+          );
+        })}
       </nav>
     </aside>
   );

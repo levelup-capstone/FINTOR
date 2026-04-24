@@ -2,6 +2,9 @@ import os
 import jwt
 import requests
 import time
+import re
+import json
+import threading
 import yfinance as yf
 import finnhub
 from requests import Session as ReqSession
@@ -12,6 +15,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.orm import Session
+from bs4 import BeautifulSoup
+import google.generativeai as genai
 
 import models, schemas, crud
 from database import engine, get_db
@@ -43,6 +48,9 @@ KIS_BASE_URL = os.getenv("KIS_BASE_URL")
 KIS_APP_KEY = os.getenv("KIS_APP_KEY")
 KIS_APP_SECRET = os.getenv("KIS_APP_SECRET")
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
+NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID")
+NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 security = HTTPBearer()
 
@@ -382,21 +390,172 @@ def collect_and_save_market_data():
 
 
 # =====================================================================
-# [백그라운드 스케줄러] 5분마다 자동 수집
+# [뉴스 파이프라인] 네이버 수집, 중복 필터링, 전처리, LLM 분석
 # =====================================================================
+def clean_html(raw_html: str) -> str:
+    """정규표현식을 활용한 데이터 전처리 (Sanitization)"""
+    clean_text = re.sub(r'<.*?>', '', raw_html)
+    clean_text = re.sub(r'&quot;|&amp;|&lt;|&gt;|&apos;', ' ', clean_text)
+    return clean_text.strip()
+
+def scrape_naver_news_body(url: str) -> str:
+    """네이버 뉴스 링크에 접속하여 본문 텍스트만 추출합니다."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    }
+    try:
+        res = requests.get(url, headers=headers, timeout=5)
+        if res.status_code == 200:
+            soup = BeautifulSoup(res.text, "lxml")
+            body_area = soup.select_one("#dic_area")
+            if body_area:
+                return body_area.get_text(separator=" ", strip=True)
+        return ""
+    except Exception as e:
+        print(f"⚠️ 본문 스크래핑 에러 [{url}]: {e}", flush=True)
+        return ""
+
+def analyze_news_with_gemini(title: str, full_text: str) -> dict:
+    if not GEMINI_API_KEY:
+        return {"category": "오류", "sentiment": "중립", "reason": "API 키 누락"}
+
+    genai.configure(api_key=GEMINI_API_KEY)
+    model = genai.GenerativeModel('gemini-3.1-flash-lite-preview')
+
+    truncated_text = full_text[:3000]
+
+    prompt = f"""
+    당신은 전문 금융 애널리스트입니다.
+    다음 뉴스 기사의 제목과 [본문]을 심층 분석하여, 반드시 아래의 JSON 형식으로만 응답해 주세요.
+
+    [뉴스 기사]
+    제목: {title}
+    본문: {truncated_text}
+
+    [출력 형식 (JSON)]
+    {{
+        "category": "주식, ETF, 예적금, 채권, 암호화폐, 원화, 금, 기타 중 택1",
+        "sentiment": "호재, 악재, 중립 중 택1",
+        "reason": "이 기사가 왜 해당 감성(호재/악재/중립)인지 본문 내용을 바탕으로 50자 이내로 명확하게 존댓말로 작성"
+    }}
+    """
+
+    try:
+        response = model.generate_content(
+            prompt,
+            generation_config={"response_mime_type": "application/json"}
+        )
+        return json.loads(response.text)
+    except Exception as e:
+        print(f"🚨 Gemini 분석 에러: {e}", flush=True)
+        return {"category": "오류", "sentiment": "중립", "reason": "분석 실패"}
+
+def run_news_pipeline():
+    """뉴스 데이터 수집, 필터링, 전처리, LLM 분석, DB 적재"""
+    print(f"📰 뉴스 파이프라인 가동 ({datetime.now(KST).strftime('%H:%M:%S')} KST)", flush=True)
+    db: Session = next(get_db())
+
+    try:
+        url = "https://openapi.naver.com/v1/search/news.json"
+        headers = {"X-Naver-Client-Id": NAVER_CLIENT_ID, "X-Naver-Client-Secret": NAVER_CLIENT_SECRET}
+
+        now_utc = datetime.now(timezone.utc)
+        start_of_today = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        target_keywords = [
+            "주식", "증시", "금리", "환율", "코인",
+            "채권", "원자재", "금", "은", "원화, 속보"
+        ]
+
+        for keyword in target_keywords:
+            skip_count = 0
+            params = {"query": keyword, "display": 15, "sort": "date"}
+            res = requests.get(url, headers=headers, params=params)
+
+            if res.status_code != 200:
+                print(f"🚨 네이버 API 호출 실패 [{keyword}]", flush=True)
+                continue
+
+            for item in res.json().get("items", []):
+                link = item.get("link")
+                pub_date_str = item.get("pubDate", "")
+
+                try:
+                    pub_date = datetime.strptime(pub_date_str, "%a, %d %b %Y %H:%M:%S %z")
+                    if pub_date < start_of_today:
+                        continue
+                except ValueError:
+                    continue
+
+                if "n.news.naver.com" not in link:
+                    continue
+                if "sid=101" not in link:
+                    continue
+
+                if crud.get_news_by_link(db, link):
+                    skip_count += 1
+                    continue
+
+                title = clean_html(item.get("title", ""))
+                description = clean_html(item.get("description", ""))
+
+                full_text = scrape_naver_news_body(link)
+                if not full_text:
+                    full_text = description
+
+                print(f"🤖 Gemini 본문 분석 중 [{title}]", flush=True)
+                start_time = time.time()
+                ai_result = analyze_news_with_gemini(title, full_text)
+                execution_time = time.time() - start_time
+                print(f"⏱️ 분석 완료. 소요 시간: {execution_time:.2f}초", flush=True)
+
+                news_data = {
+                    "title": title,
+                    "link": link,
+                    "description": description,
+                    "category": ai_result.get("category", "오류"),
+                    "sentiment": ai_result.get("sentiment", "중립"),
+                    "reason": ai_result.get("reason", "분석 실패"),
+                    "pub_date": pub_date_str,
+                    "created_at": now_utc
+                }
+
+                crud.create_news(db, news_data)
+                print(f"✅ 뉴스 적재 완료 [{keyword}] - {ai_result.get('sentiment')}: {ai_result.get('reason')}", flush=True)
+
+                # Gemini 무료 API RPM 초과 방지
+                time.sleep(2.1)
+
+            if skip_count > 0:
+                print(f"📊 [{keyword}] 검색 결과 중 총 {skip_count}개의 중복 또는 과거 기사가 제외되었습니다.", flush=True)
+
+    except Exception as e:
+        print(f"🚨 뉴스 파이프라인 에러: {e}", flush=True)
+    finally:
+        db.close()
+
+
+# =====================================================================
+# [백그라운드 스케줄러]
+# =====================================================================
+
 scheduler = BackgroundScheduler()
 
 @app.on_event("startup")
 def startup_event():
+    # 포트폴리오 템플릿 시드 데이터 주입
     run_seed()
-    # 서버 시작 시 최초 1회 즉시 실행
-    collect_and_save_market_data()
+    # 서버 시작 시 최초 1회 실행 (블로킹 방지를 위해 백그라운드 스레드로)
+    threading.Thread(target=collect_and_save_market_data, daemon=True).start()
+    threading.Thread(target=run_news_pipeline, daemon=True).start()
 
-    # DEV_MODE면 1분, 아니면 5분마다 실행
-    interval = 1 if DEV_MODE else 5
-    scheduler.add_job(collect_and_save_market_data, "interval", minutes=interval)
+    # 지수: DEV_MODE면 1분, 아니면 5분 / 뉴스: DEV_MODE면 10분, 아니면 30분
+    index_interval = 1 if DEV_MODE else 5
+    news_interval  = 10 if DEV_MODE else 30
+    scheduler.add_job(collect_and_save_market_data, "interval", minutes=index_interval)
+    scheduler.add_job(run_news_pipeline, "interval", minutes=news_interval)
     scheduler.start()
-    print(f"⏰ 스케줄러 시작 ({interval}분 간격)")
+    print(f"⏰ 스케줄러 시작 (지수 {index_interval}분 / 뉴스 {news_interval}분 간격)")
 
 @app.on_event("shutdown")
 def shutdown_event():
@@ -434,6 +593,31 @@ def get_market_indices(db: Session = Depends(get_db)):
         "data": data,
         "updated_at": latest_updated_at.isoformat() if latest_updated_at else None
     }
+
+
+# 수집된 뉴스를 프론트엔드로 전달하는 API 엔드포인트
+@app.get("/api/v1/market/news")
+def get_market_news(db: Session = Depends(get_db)):
+    news_list = crud.get_latest_news(db)
+    return {
+        "success": True,
+        "data": [
+            {
+                "id":          n.id,
+                "title":       n.title,
+                "description": n.description,
+                "category":    n.category,
+                "sentiment":   n.sentiment,
+                "reason":      n.reason,
+                "link":        n.link,
+                "pub_date":    n.pub_date,
+                "created_at":  n.created_at.isoformat() if n.created_at else None,
+            }
+            for n in news_list
+        ]
+    }
+
+
 # =====================================================================
 # [포트폴리오 추천] Risk Score 계산 로직
 # =====================================================================

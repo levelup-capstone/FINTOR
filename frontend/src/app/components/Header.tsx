@@ -1,9 +1,19 @@
 import { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useLocation, Link } from 'react-router';
 
 export function Header() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+
+  const navItems = [
+    { label: '대시보드', to: '/dashboard' },
+    { label: '기록', to: '/dashboard/record' },
+    { label: '퀴즈', to: '/dashboard/quiz' },
+    { label: '뉴스', to: '/dashboard/news' },
+  ];
+  const activeClass = "text-[#1A237E] dark:text-white font-bold border-b-2 border-[#1A237E] py-1";
+  const inactiveClass = "text-slate-500 dark:text-slate-400 font-medium hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors px-3 py-1 rounded-lg";
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // localStorage에서 로그인 시 저장된 사용자 정보 읽기
@@ -48,29 +58,21 @@ export function Header() {
             Fintor
           </span>
           <nav className="hidden md:flex gap-4">
-            <a
-              className="text-[#1A237E] dark:text-white font-bold border-b-2 border-[#1A237E] py-1"
-              href="#"
-            >
-              대시보드
-            </a>
-            <a
-              className="text-slate-500 dark:text-slate-400 font-medium hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors px-3 py-1 rounded-lg"
-              href="#"
-            >
-              기록
-            </a>
-            <a
-              className="text-slate-500 dark:text-slate-400 font-medium hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors px-3 py-1 rounded-lg"
-              href="#"
-            >
-              퀴즈
-            </a>
-            <a
-              className="text-slate-500 dark:text-slate-400 font-medium hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors px-3 py-1 rounded-lg"
-            >
-              뉴스
-            </a>
+            {navItems.map((item) => {
+              const isActive =
+                item.to === '/dashboard'
+                  ? location.pathname === '/dashboard' || location.pathname === '/dashboard/'
+                  : location.pathname.startsWith(item.to);
+              return (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  className={isActive ? activeClass : inactiveClass}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
           </nav>
         </div>
         <div className="flex items-center gap-4">

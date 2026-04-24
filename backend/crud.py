@@ -96,3 +96,23 @@ def create_user_level(db: Session, user_id: int):
     db.commit()
     db.refresh(user_level)
     return user_level
+
+
+# =====================================================================
+# 뉴스 조회 / 생성 (1~3단계 파이프라인 처리용)
+# =====================================================================
+def get_news_by_link(db: Session, link: str):
+    """[2단계 Deduplication] 링크 기반 중복 기사 검증"""
+    return db.query(models.News).filter(models.News.link == link).first()
+
+def create_news(db: Session, news_data: dict):
+    """신규 기사 적재 (전처리 완료본)"""
+    news = models.News(**news_data)
+    db.add(news)
+    db.commit()
+    db.refresh(news)
+    return news
+
+def get_latest_news(db: Session, limit: int = 50):
+    """대시보드용 최신 뉴스 조회"""
+    return db.query(models.News).order_by(models.News.created_at.desc()).limit(limit).all()

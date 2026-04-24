@@ -90,3 +90,17 @@ class UserLevel(Base):
     exp        = Column(Integer, default=0, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
+
+
+class News(Base):
+    __tablename__ = "news"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    title       = Column(String, nullable=False)
+    description = Column(String, nullable=False)
+    category    = Column(String, nullable=False, default="분석대기")
+    sentiment   = Column(String, nullable=False, default="분석대기")
+    reason      = Column(String, nullable=False, default="OpenAI 연동 대기중")
+    link        = Column(String, unique=True, index=True, nullable=False)
+    pub_date    = Column(String, nullable=False)
+    created_at  = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
