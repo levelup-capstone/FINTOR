@@ -114,5 +114,5 @@ def create_news(db: Session, news_data: dict):
     return news
 
 def get_latest_news(db: Session, limit: int = 50):
-    """대시보드용 최신 뉴스 조회"""
-    return db.query(models.News).order_by(models.News.created_at.desc()).limit(limit).all()
+    """대시보드용 최신 뉴스 조회 (발행일 기준 최신순)"""
+    return db.query(models.News).order_by(models.News.pub_date.desc()).limit(limit).all()
