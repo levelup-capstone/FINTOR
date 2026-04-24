@@ -33,6 +33,7 @@ export function Dashboard() {
   type Allocation = { asset: string; ratio: number };
   const [portfolioName, setPortfolioName] = useState<string | null>(null);
   const [allocations, setAllocations] = useState<Allocation[]>([]);
+  const [dDay, setDDay] = useState<number | null>(null);
 
   const ASSET_COLOR: Record<string, string> = {
     'growth-stock': '#EF4444',
@@ -67,6 +68,7 @@ export function Dashboard() {
           if (json.success) {
             setPortfolioName(json.data.portfolio.title ?? json.data.portfolio.risk_label);
             setAllocations(json.data.portfolio.allocations);
+            setDDay(json.data.portfolio.d_day ?? null);
           }
         })
         .catch(() => {});
@@ -250,7 +252,7 @@ export function Dashboard() {
           {/* 도넛 차트: hoveredAsset 상태를 받아 해당 조각을 강조해서 렌더링
               onHover로 차트 쪽에서 호버해도 자산 카드가 함께 반응함 */}
           <div className="flex flex-col items-center">
-            <DonutChart hoveredId={hoveredAsset} onHover={setHoveredAsset} data={chartData} />
+            <DonutChart hoveredId={hoveredAsset} onHover={setHoveredAsset} data={chartData} dDay={dDay} />
           </div>
         </div>
       </section>

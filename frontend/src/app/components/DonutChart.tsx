@@ -8,6 +8,7 @@ interface DonutChartProps {
   hoveredId?: string | null;
   onHover?: (id: string | null) => void;
   data?: ChartSlice[];
+  dDay?: number | null;
 }
 
 const DEFAULT_DATA: ChartSlice[] = [
@@ -17,7 +18,7 @@ const DEFAULT_DATA: ChartSlice[] = [
   { id: 'gold',         value: 15, color: '#EAB308' },
 ];
 
-export function DonutChart({ hoveredId = null, onHover = () => {}, data }: DonutChartProps) {
+export function DonutChart({ hoveredId = null, onHover = () => {}, data, dDay = null }: DonutChartProps) {
   const slices = data && data.length > 0 ? data : DEFAULT_DATA;
 
   const radius = 90;
@@ -56,8 +57,10 @@ export function DonutChart({ hoveredId = null, onHover = () => {}, data }: Donut
         })}
       </svg>
       <div className="absolute z-10 text-center flex flex-col items-center pointer-events-none">
-        <p className="text-[8px] md:text-[10px] font-bold text-on-surface-variant tracking-widest">남은 투자 기간</p>
-        <p className="text-xl md:text-3xl font-black text-primary font-headline">D-452</p>
+        <p className="text-[8px] md:text-[10px] font-bold text-on-surface-variant tracking-widest">투자 시작 후</p>
+        <p className="text-xl md:text-3xl font-black text-primary font-headline">
+          {dDay === null ? '—' : `D+${dDay + 1}`}
+        </p>
       </div>
     </div>
   );
