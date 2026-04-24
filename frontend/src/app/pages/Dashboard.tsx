@@ -65,8 +65,8 @@ export function Dashboard() {
         .then(r => r.json())
         .then(json => {
           if (json.success) {
-            setPortfolioName(json.data.portfolios.name);
-            setAllocations(json.data.portfolios.allocations);
+            setPortfolioName(json.data.portfolio.title ?? json.data.portfolio.risk_label);
+            setAllocations(json.data.portfolio.allocations);
           }
         })
         .catch(() => {});

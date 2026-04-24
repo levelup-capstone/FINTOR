@@ -31,7 +31,12 @@ const portfolioBadgeColors = ['#3b82f6', '#eab308', '#ef4444'];
 
 // 백엔드 응답 타입
 type ApiAllocation = { asset: string; ratio: number };
-type ApiPortfolio = { id: string; name: string; allocations: ApiAllocation[] };
+type ApiPortfolio = {
+  template_id: number;
+  title: string;
+  description?: string | null;
+  allocations: ApiAllocation[];
+};
 
 const questions = [
   { id: 'age', title: '연령대를 선택해주세요', options: ['20대 미만','20대', '30대', '40대', '50대', '60대 이상'] },
@@ -199,8 +204,8 @@ export function Survey() {
 
   const mockPortfolios: ApiPortfolio[] = [
     {
-      id: 'stable',
-      name: '안정형',
+      template_id: 1,
+      title: '안정형',
       allocations: [
         { asset: 'deposit', ratio: 35 },
         { asset: 'bonds', ratio: 30 },
@@ -210,8 +215,8 @@ export function Survey() {
       ],
     },
     {
-      id: 'risk-neutral',
-      name: '위험중립형',
+      template_id: 2,
+      title: '위험중립형',
       allocations: [
         { asset: 'etf', ratio: 30 },
         { asset: 'bluechip-stock', ratio: 25 },
@@ -221,8 +226,8 @@ export function Survey() {
       ],
     },
     {
-      id: 'aggressive',
-      name: '공격투자형',
+      template_id: 3,
+      title: '공격투자형',
       allocations: [
         { asset: 'growth-stock', ratio: 40 },
         { asset: 'coin', ratio: 25 },
@@ -254,8 +259,8 @@ export function Survey() {
         body: JSON.stringify(buildPayload()),
       });
       const data = await res.json();
-      if (data.success && data.data?.portfolios) {
-        setApiPortfolios(data.data.portfolios);
+      if (data.success && data.data?.recommended_portfolios) {
+        setApiPortfolios(data.data.recommended_portfolios);
         setShowPortfolioSelection(true);
       } else {
         console.error('포트폴리오 응답 오류:', data);
@@ -280,9 +285,7 @@ export function Survey() {
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({
             userid:      userId,
-            id:          selectedPortfolio.id,
-            name:        selectedPortfolio.name,
-            allocations: selectedPortfolio.allocations,
+            template_id: selectedPortfolio.template_id,
           }),
         });
       }
@@ -325,11 +328,11 @@ export function Survey() {
                 const assetNames = portfolio.allocations
                   .map((a) => assetNameMap[a.asset] ?? a.asset)
                   .join(', ');
-                const isSelected = selectedPortfolio?.id === portfolio.id;
+                const isSelected = selectedPortfolio?.template_id === portfolio.template_id;
 
                 return (
                   <button
-                    key={portfolio.id}
+                    key={portfolio.template_id}
                     onClick={() => setSelectedPortfolio(portfolio)}
                     className={`group relative p-6 md:p-7 rounded-xl border-2 transition-all duration-300 text-left min-h-[380px] flex flex-col hover:scale-[1.03] hover:shadow-xl ${
                       isSelected
@@ -350,7 +353,7 @@ export function Survey() {
 
                     {/* 포트폴리오 이름 뱃지 */}
                     <div className="inline-flex items-center justify-center px-3 py-1.5 rounded-full mb-5 text-white font-bold text-sm shadow-sm" style={{ backgroundColor: badgeColor }}>
-                      {portfolio.name}
+                      {portfolio.title}
                     </div>
 
                     {/* 도넛 차트 + 범례 */}
