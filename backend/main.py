@@ -163,7 +163,13 @@ KIS_DOMESTIC_SYMBOLS = {
     "BBIG":      "4411",
 }
 
+_kis_token_cache = {"token": None, "expires_at": 0}
+
 def get_kis_access_token():
+    # 캐시된 토큰이 유효하면 재사용 (한투증 토큰 유효기간 ~24시간)
+    if _kis_token_cache["token"] and time.time() < _kis_token_cache["expires_at"]:
+        return _kis_token_cache["token"]
+
     url = f"{KIS_BASE_URL}/oauth2/tokenP"
     payload = {
         "grant_type": "client_credentials",
@@ -175,7 +181,11 @@ def get_kis_access_token():
         if res.status_code != 200:
             print(f"❌ KIS 인증 실패: {res.text}")
             return None
-        return res.json().get("access_token")
+        token = res.json().get("access_token")
+        _kis_token_cache["token"] = token
+        _kis_token_cache["expires_at"] = time.time() + 23 * 3600  # 23시간 후 갱신
+        print("🔑 KIS 접근토큰 신규 발급 완료")
+        return token
     except Exception as e:
         print(f"🚨 KIS 네트워크 오류: {str(e)}")
         return None
