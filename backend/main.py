@@ -622,19 +622,20 @@ def get_market_news(db: Session = Depends(get_db)):
 # [포트폴리오 추천] Risk Score 계산 로직
 # =====================================================================
 
-RISK_TYPE_SCORE = {"v-low": 1, "low": 2, "high": 3, "v-high": 4}
+RISK_TYPE_SCORE = {"v-low": 1, "low": 4, "high": 8, "v-high": 12}
 EXPERIENCE_SCORE = {"none": 0, "under-6m": 1, "6m-1y": 2, "1y-3y": 3, "3y-5y": 4, "over-5y": 5}
-PERIOD_SCORE = {"short": 1, "s-mid": 2, "m-long": 3, "long": 4}
+PERIOD_SCORE = {"long": 1, "m-long": 2, "s-mid": 3, "short": 4}
 GOAL_SCORE = {
     "saving": 1, "retirement": 1, "home-ownership": 1,
     "investment-management": 2, "others": 2,
     "growth": 3,
 }
 AGE_SCORE = {"under-20": 2, "20y": 2, "30y": 1, "40y": 1, "50y": 0, "over-60": 0}
+# 자산 규모가 클수록 안정 지향 → 점수 차감
 ASSETS_SCORE = {
-    "under-500": 0, "500-1000": 0,
-    "1000-5000": 1, "5000-1m": 1,
-    "1m-3m": 2, "over-3m": 2, "over_3m": 2,
+    "under-500": 2, "500-1000": 1,
+    "1000-5000": 0, "5000-1m": 0,
+    "1m-3m": -1, "over-3m": -2, "over_3m": -2,
 }
 INCOME_SCORE = {
     "under-200": 0, "200-400": 0,
@@ -657,10 +658,10 @@ def calc_risk_score(survey: schemas.SurveyCreate) -> int:
 
 
 def score_to_level(score: int) -> int:
-    if score <= 5:    return 1
-    elif score <= 8:  return 2
-    elif score <= 11: return 3
-    elif score <= 14: return 4
+    if score <= 6:    return 1
+    elif score <= 12: return 2
+    elif score <= 18: return 3
+    elif score <= 24: return 4
     else:             return 5
 
 

@@ -53,13 +53,16 @@ class PortfolioTemplate(Base):
     allocations = Column(JSONB, nullable=False)       # [{"asset": "etf", "label": "ETF", "ratio": 30}, ...]
     created_at  = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
+    portfolios  = relationship("Portfolio", back_populates="template",
+                               passive_deletes=True)
+
 
 class Portfolio(Base):
     __tablename__ = "portfolios"
 
     id          = Column(Integer, primary_key=True, index=True)
     user_id     = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
-    template_id = Column(Integer, ForeignKey("portfolio_templates.id"), nullable=True)
+    template_id = Column(Integer, ForeignKey("portfolio_templates.id", ondelete="SET NULL"), nullable=True)
     profile_id  = Column(String, nullable=False)
     name        = Column(String, nullable=False)
     created_at  = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
@@ -68,14 +71,14 @@ class Portfolio(Base):
 
     allocations = relationship("PortfolioAllocation", back_populates="portfolio",
                                cascade="all, delete-orphan")
-    template    = relationship("PortfolioTemplate")
+    template    = relationship("PortfolioTemplate", back_populates="portfolios")
 
 
 class PortfolioAllocation(Base):
     __tablename__ = "portfolio_allocations"
 
     id           = Column(Integer, primary_key=True, index=True)
-    portfolio_id = Column(Integer, ForeignKey("portfolios.id"), nullable=False)
+    portfolio_id = Column(Integer, ForeignKey("portfolios.id", ondelete="CASCADE"), nullable=False)
     asset        = Column(String, nullable=False)
     ratio        = Column(Integer, nullable=False)
 
