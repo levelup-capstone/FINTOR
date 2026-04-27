@@ -1,4 +1,6 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import func
+from datetime import datetime, timedelta, timezone
 import models, schemas
 
 def get_user_by_kakao_id(db: Session, kakao_id: str):
@@ -116,3 +118,58 @@ def create_news(db: Session, news_data: dict):
 def get_latest_news(db: Session, limit: int = 50):
     """대시보드용 최신 뉴스 조회 (발행일 기준 최신순)"""
     return db.query(models.News).order_by(models.News.pub_date.desc()).limit(limit).all()
+
+def get_view_counts_24h_map(db: Session, news_ids: list[int]) -> dict[int, int]:
+    """주어진 뉴스 id 리스트에 대해 24시간 내 조회수를 dict로 반환"""
+    if not news_ids:
+        return {}
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    rows = (
+        db.query(
+            models.NewsView.news_id,
+            func.count(models.NewsView.id).label("cnt"),
+        )
+        .filter(models.NewsView.viewed_at >= cutoff)
+        .filter(models.NewsView.news_id.in_(news_ids))
+        .group_by(models.NewsView.news_id)
+        .all()
+    )
+    return {nid: cnt for nid, cnt in rows}
+
+
+# =====================================================================
+# 뉴스 조회수 (24시간 롤링 인기뉴스용)
+# =====================================================================
+def log_news_view(db: Session, news_id: int):
+    """뉴스 클릭 1회 = 1행 insert"""
+    view = models.NewsView(news_id=news_id)
+    db.add(view)
+    db.commit()
+
+def get_popular_news_24h(db: Session, limit: int = 5):
+    """최근 24시간 내 클릭 수 기준 인기 뉴스 상위 N개"""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+
+    subq = (
+        db.query(
+            models.NewsView.news_id.label("news_id"),
+            func.count(models.NewsView.id).label("cnt"),
+        )
+        .filter(models.NewsView.viewed_at >= cutoff)
+        .group_by(models.NewsView.news_id)
+        .subquery()
+    )
+
+    return (
+        db.query(models.News, subq.c.cnt)
+        .join(subq, models.News.id == subq.c.news_id)
+        .order_by(subq.c.cnt.desc(), models.News.pub_date.desc())
+        .limit(limit)
+        .all()
+    )
+
+def cleanup_old_news_views(db: Session):
+    """24시간 지난 조회 로그 삭제 (운영용)"""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    db.query(models.NewsView).filter(models.NewsView.viewed_at < cutoff).delete()
+    db.commit()

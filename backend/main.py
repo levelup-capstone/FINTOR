@@ -599,6 +599,7 @@ def get_market_indices(db: Session = Depends(get_db)):
 @app.get("/api/v1/market/news")
 def get_market_news(db: Session = Depends(get_db)):
     news_list = crud.get_latest_news(db)
+    view_map = crud.get_view_counts_24h_map(db, [n.id for n in news_list])
     return {
         "success": True,
         "data": [
@@ -612,10 +613,41 @@ def get_market_news(db: Session = Depends(get_db)):
                 "link":        n.link,
                 "pub_date":    n.pub_date,
                 "created_at":  n.created_at.isoformat() if n.created_at else None,
+                "view_count":  view_map.get(n.id, 0),
             }
             for n in news_list
         ]
     }
+
+
+# 24시간 기준 인기 뉴스 (조회수 상위 5개)
+@app.get("/api/v1/market/news/popular")
+def get_popular_news(db: Session = Depends(get_db)):
+    rows = crud.get_popular_news_24h(db, limit=5)
+    return {
+        "success": True,
+        "data": [
+            {
+                "id":          n.id,
+                "title":       n.title,
+                "description": n.description,
+                "category":    n.category,
+                "sentiment":   n.sentiment,
+                "reason":      n.reason,
+                "link":        n.link,
+                "pub_date":    n.pub_date,
+                "view_count":  cnt,
+            }
+            for n, cnt in rows
+        ]
+    }
+
+
+# 뉴스 클릭 시 조회수 기록
+@app.post("/api/v1/market/news/{news_id}/view")
+def add_news_view(news_id: int, db: Session = Depends(get_db)):
+    crud.log_news_view(db, news_id)
+    return {"success": True}
 
 
 # =====================================================================

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Flame, Sparkles, Globe, Clock, ChevronRight } from "lucide-react";
+import { Flame, Sparkles, Globe, Clock, ChevronRight, Eye } from "lucide-react";
 
 type ApiNews = {
   id: number;
@@ -11,6 +11,15 @@ type ApiNews = {
   link: string;
   pub_date: string;
   created_at: string | null;
+  view_count: number;
+};
+
+type PopularNews = ApiNews & { view_count: number };
+
+const handleNewsClick = (newsId: number, link: string) => {
+  fetch(`http://localhost:8000/api/v1/market/news/${newsId}/view`, { method: "POST" })
+    .catch(() => {});
+  window.open(link, "_blank", "noopener,noreferrer");
 };
 
 function formatTimeAgo(pubDateStr: string): string {
@@ -29,6 +38,7 @@ function formatTimeAgo(pubDateStr: string): string {
 export function News() {
   const [activeTab, setActiveTab] = useState<"custom" | "all">("custom");
   const [apiNews, setApiNews] = useState<ApiNews[]>([]);
+  const [popularNews, setPopularNews] = useState<PopularNews[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -39,6 +49,21 @@ export function News() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
+  }, []);
+
+  // 인기 뉴스 (24시간 기준 조회수 상위 5개) - 1분마다 자동 새로고침
+  useEffect(() => {
+    const fetchPopular = () => {
+      fetch("http://localhost:8000/api/v1/market/news/popular")
+        .then((r) => r.json())
+        .then((json) => {
+          if (json.success) setPopularNews(json.data);
+        })
+        .catch(() => {});
+    };
+    fetchPopular();
+    const id = setInterval(fetchPopular, 60_000);
+    return () => clearInterval(id);
   }, []);
 
   const myPortfolioTags = ["비트코인", "금", "반도체", "미국주식", "주식"];
@@ -65,25 +90,46 @@ export function News() {
     return colors[tag] || "bg-gray-100 text-gray-700 ring-gray-200";
   };
 
-  // 실시간 인기 뉴스는 별도 API 연동 예정 - 현재는 목업 유지
-  const trendingNews = [
-    { id: 1, title: "연준 금리 동결 유력... 하반기 인하 전망은?", source: "파이낸셜뉴스", time: "1시간 전", tags: ["거시경제", "금리"], link: "#" },
-    { id: 2, title: "비트코인, 반감기 앞두고 1억 재돌파 성공", source: "코인투데이", time: "2시간 전", tags: ["비트코인", "가상화폐"], link: "#" },
-    { id: 3, title: "안전 자산 선호에 금값 역대 최고치 경신", source: "경제일보", time: "3시간 전", tags: ["금", "원자재"], link: "#" },
-    { id: 4, title: "AI 반도체 수요 폭발... 관련주 실적 기대감 쑥", source: "IT조선", time: "4시간 전", tags: ["반도체", "AI"], link: "#" },
-    { id: 5, title: "주요 기업 1분기 어닝 서프라이즈 예고", source: "비즈니스워치", time: "5시간 전", tags: ["주식", "국내증시"], link: "#" },
-  ];
+  // 실시간 인기 뉴스 (24시간 기준 조회수 상위 5개)
+  const trendingNews = popularNews.map((n) => ({
+    id: n.id,
+    title: n.title,
+    source: n.category,
+    sentiment: n.sentiment,
+    time: formatTimeAgo(n.pub_date),
+    tags: [n.category].filter(Boolean),
+    link: n.link,
+    viewCount: n.view_count,
+  }));
 
-  // API로 가져온 뉴스는 전부 그리드 섹션에 표시
-  const gridNews = apiNews.map((n) => ({
+  // API로 가져온 뉴스는 전부 그리드 섹션에 표시 (발행일 최신순으로 정렬)
+  const sortedApiNews = [...apiNews].sort((a, b) => {
+    const ta = new Date(a.pub_date).getTime();
+    const tb = new Date(b.pub_date).getTime();
+    return tb - ta;
+  });
+  const gridNews = sortedApiNews.map((n) => ({
     id: n.id,
     title: n.title,
     description: n.reason || n.description,
     source: n.category,
+    sentiment: n.sentiment,
     time: formatTimeAgo(n.pub_date),
-    tags: [n.category, n.sentiment].filter(Boolean),
+    tags: [n.category].filter(Boolean),
     link: n.link,
+    viewCount: n.view_count,
   }));
+
+  const getSentimentBadgeClass = (sentiment: string) => {
+    switch (sentiment) {
+      case "호재":
+        return "text-emerald-700 bg-emerald-100";
+      case "악재":
+        return "text-red-700 bg-red-100";
+      default:
+        return "text-primary bg-primary/10";
+    }
+  };
 
   const displayedGridNews =
     activeTab === "custom"
@@ -107,10 +153,11 @@ export function News() {
           {trendingNews.map((news, index) => (
             <div
               key={news.id}
+              onClick={() => handleNewsClick(news.id, news.link)}
               className="relative overflow-hidden bg-surface-container-low rounded-xl md:rounded-2xl p-3 md:p-4 shadow-sm hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 cursor-pointer group border border-surface-container-high hover:border-primary/30 flex flex-row md:flex-col items-center md:items-start gap-4 md:gap-3 md:min-h-[140px]"
             >
               <div className="md:hidden flex-shrink-0 w-6 text-center">
-                <span className={`text-2xl font-black italic ${index < 3 ? 'text-primary' : 'text-surface-container-highest/60'}`}>
+                <span className={`text-2xl font-black italic ${index < 5 ? 'text-primary' : 'text-surface-container-highest/60'}`}>
                   {index + 1}
                 </span>
               </div>
@@ -121,13 +168,18 @@ export function News() {
 
               <div className="relative z-10 flex flex-col justify-center md:justify-start h-full w-full">
                 <div className="flex justify-between items-center text-[10px] md:text-xs font-semibold text-on-surface-variant mb-1 md:mb-2">
-                  <span className="text-primary flex items-center gap-1">
-                    <span className="hidden md:block w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                    {news.source}
+                  <span className={`px-2 py-0.5 rounded-md flex items-center gap-1 ${getSentimentBadgeClass(news.sentiment)}`}>
+                    {news.sentiment}
                   </span>
-                  <span className="flex items-center gap-1 opacity-70">
-                    <Clock className="w-3 h-3 hidden md:block" />
-                    {news.time}
+                  <span className="flex items-center gap-2 opacity-70">
+                    <span className="flex items-center gap-1">
+                      <Eye className="w-3 h-3" />
+                      {news.viewCount.toLocaleString()}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3 h-3 hidden md:block" />
+                      {news.time}
+                    </span>
                   </span>
                 </div>
 
@@ -183,22 +235,26 @@ export function News() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {displayedGridNews.length > 0 ? (
             displayedGridNews.map((news) => (
-              <a
+              <div
                 key={news.id}
-                href={news.link}
-                target="_blank"
-                rel="noopener noreferrer"
+                onClick={() => handleNewsClick(news.id, news.link)}
                 className="group relative flex flex-col gap-4 cursor-pointer p-6 bg-surface-container-lowest border border-surface-container-high rounded-2xl hover:shadow-xl hover:shadow-primary/5 transition-all duration-300 hover:-translate-y-1 overflow-hidden"
               >
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-primary/0 to-transparent group-hover:via-primary/50 transition-all duration-500" />
 
                 <div className="flex justify-between items-center text-xs font-semibold">
-                  <span className="text-primary bg-primary/10 px-2.5 py-1 rounded-md flex items-center gap-1">
-                    {news.source}
+                  <span className={`px-2.5 py-1 rounded-md flex items-center gap-1 ${getSentimentBadgeClass(news.sentiment)}`}>
+                    {news.sentiment}
                   </span>
-                  <span className="text-on-surface-variant flex items-center gap-1 opacity-70">
-                    <Clock className="w-3.5 h-3.5" />
-                    {news.time}
+                  <span className="text-on-surface-variant flex items-center gap-3 opacity-70">
+                    <span className="flex items-center gap-1">
+                      <Eye className="w-3.5 h-3.5" />
+                      {news.viewCount.toLocaleString()}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5" />
+                      {news.time}
+                    </span>
                   </span>
                 </div>
 
@@ -227,7 +283,7 @@ export function News() {
                     <ChevronRight className="w-4 h-4" />
                   </div>
                 </div>
-              </a>
+              </div>
             ))
           ) : (
             <div className="col-span-full py-20 flex flex-col items-center justify-center text-center text-on-surface-variant bg-surface-container-lowest rounded-2xl border border-dashed border-surface-container-high">

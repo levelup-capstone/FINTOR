@@ -107,3 +107,14 @@ class News(Base):
     link        = Column(String, unique=True, index=True, nullable=False)
     pub_date    = Column(String, nullable=False)
     created_at  = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class NewsView(Base):
+    __tablename__ = "news_views"
+
+    id        = Column(Integer, primary_key=True, index=True)
+    news_id   = Column(Integer, ForeignKey("news.id", ondelete="CASCADE"),
+                       nullable=False, index=True)
+    viewed_at = Column(DateTime(timezone=True),
+                       default=lambda: datetime.now(timezone.utc),
+                       index=True)

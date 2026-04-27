@@ -4,7 +4,7 @@ export function BottomNav() {
   const location = useLocation();
 
   const items = [
-    { label: '홈', to: '/dashboard', icon: 'dashboard' },
+    { label: '대시보드', to: '/dashboard', icon: 'dashboard' },
     { label: '기록', to: '/dashboard/record', icon: 'edit_note' },
     { label: '퀴즈', to: '/dashboard/quiz', icon: 'quiz' },
     { label: '뉴스', to: '/dashboard/news', icon: 'newspaper' },
