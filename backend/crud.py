@@ -2,6 +2,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import datetime, timedelta, timezone
 import models, schemas
+from datetime import datetime, timedelta, timezone
+from sqlalchemy.orm import Session
+import models
 
 def get_user_by_kakao_id(db: Session, kakao_id: str):
     return db.query(models.User).filter(models.User.kakao_id == kakao_id).first()
@@ -173,3 +176,20 @@ def cleanup_old_news_views(db: Session):
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     db.query(models.NewsView).filter(models.NewsView.viewed_at < cutoff).delete()
     db.commit()
+
+
+# =====================================================================
+# 뉴스 삭제 (저장 후 3일이 지난 뉴스 데이터 삭제)
+# =====================================================================
+def delete_old_news(db: Session, days_to_keep: int = 3) -> int:
+    """
+    저장된 지 특정 일수(days_to_keep)가 지난 과거 뉴스 데이터를 DB에서 삭제합니다.
+    """
+    # 현재 UTC 시간 기준으로 3일 전 날짜 계산
+    cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_to_keep)
+    
+    # 3일보다 이전에 생성된(created_at < cutoff_date) 데이터 일괄 삭제
+    deleted_count = db.query(models.News).filter(models.News.created_at < cutoff_date).delete(synchronize_session=False)
+    db.commit()
+    
+    return deleted_count

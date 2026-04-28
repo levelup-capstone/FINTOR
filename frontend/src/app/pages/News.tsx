@@ -8,6 +8,7 @@ type ApiNews = {
   category: string;
   sentiment: string;
   reason: string;
+  tag: string;
   link: string;
   pub_date: string;
   created_at: string | null;
@@ -115,7 +116,7 @@ export function News() {
     source: n.category,
     sentiment: n.sentiment,
     time: formatTimeAgo(n.pub_date),
-    tags: [n.category].filter(Boolean),
+    tags: [n.category, n.tag].filter(Boolean),
     link: n.link,
     viewCount: n.view_count,
   }));

@@ -27,7 +27,8 @@ models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Fintor Auth Server")
 
-DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
+# DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
+DEV_MODE = False
 KST = timezone(timedelta(hours=9))
 
 # --- [CORS 설정] ---
@@ -434,8 +435,12 @@ def analyze_news_with_gemini(title: str, full_text: str) -> dict:
 
     [출력 형식 (JSON)]
     {{
-        "category": "주식, ETF, 예적금, 채권, 암호화폐, 원화, 금, 기타 중 택1",
-        "sentiment": "호재, 악재, 중립 중 택1",
+        "category": "주식, ETF, 예적금, 채권, 암호화폐, 원화, 금, 기타 중 반드시 택1",
+        "sentiment": "호재, 악재, 중립 중 반드시 택1",
+        "tag": "반도체, 디스플레이, IT, 게임, AI, 로봇, 통신/네트워크, 자동차, 
+        배터리, 조선, 우주항공, 방산, 바이오, 헬스케어, 금융, 증권, 가상자산/핀테크, 
+        철강/금속, 화학/정유, 건설/건자재, 유통/소비재, 화장품/의류, 음식료, 엔터테인먼트/미디어, 여행/항공, 에너지/환경, 
+        전력/유틸리티, 기타 중 기사 본문의 핵심 주제와 가장 밀접한 것 반드시 택1",
         "reason": "이 기사가 왜 해당 감성(호재/악재/중립)인지 본문 내용을 바탕으로 50자 이내로 명확하게 존댓말로 작성"
     }}
     """
@@ -456,6 +461,13 @@ def run_news_pipeline():
     db: Session = next(get_db())
 
     try:
+        # 3일이 경과한 과거 기사 DB에서 삭제
+        deleted_news_count = crud.delete_old_news(db, days_to_keep=3)
+        if deleted_news_count > 0:
+            print(f"🧹 보관 기간(3일)이 경과한 뉴스 {deleted_news_count}개를 삭제했습니다.", flush=True)
+        else:
+            print("🧹 삭제할 오래된 뉴스 기사가 없습니다. 현재 DB가 깔끔한 상태입니다.", flush=True)
+        
         url = "https://openapi.naver.com/v1/search/news.json"
         headers = {"X-Naver-Client-Id": NAVER_CLIENT_ID, "X-Naver-Client-Secret": NAVER_CLIENT_SECRET}
 
@@ -503,7 +515,7 @@ def run_news_pipeline():
                 if not full_text:
                     full_text = description
 
-                print(f"🤖 Gemini 본문 분석 중 [{title}]", flush=True)
+                print(f"🤖 뉴스 본문 분석 중 [{title}]", flush=True)
                 start_time = time.time()
                 ai_result = analyze_news_with_gemini(title, full_text)
                 execution_time = time.time() - start_time
@@ -515,6 +527,7 @@ def run_news_pipeline():
                     "description": description,
                     "category": ai_result.get("category", "오류"),
                     "sentiment": ai_result.get("sentiment", "중립"),
+                    "tag": ai_result.get("tag", "기타"),
                     "reason": ai_result.get("reason", "분석 실패"),
                     "pub_date": pub_date_str,
                     "created_at": now_utc
@@ -543,6 +556,11 @@ scheduler = BackgroundScheduler()
 
 @app.on_event("startup")
 def startup_event():
+    if DEV_MODE:
+        print("💻 개발 모드입니다.")
+    else:
+        print("🏢 운영 모드입니다.")
+
     # 포트폴리오 템플릿 시드 데이터 주입
     run_seed()
     # 서버 시작 시 최초 1회 실행 (블로킹 방지를 위해 백그라운드 스레드로)
@@ -556,7 +574,7 @@ def startup_event():
     scheduler.add_job(run_news_pipeline, "interval", minutes=news_interval)
     scheduler.start()
     print(f"⏰ 스케줄러 시작 (지수 {index_interval}분 / 뉴스 {news_interval}분 간격)")
-
+    
 @app.on_event("shutdown")
 def shutdown_event():
     scheduler.shutdown()
@@ -610,6 +628,7 @@ def get_market_news(db: Session = Depends(get_db)):
                 "category":    n.category,
                 "sentiment":   n.sentiment,
                 "reason":      n.reason,
+                "tag":         n.tag,
                 "link":        n.link,
                 "pub_date":    n.pub_date,
                 "created_at":  n.created_at.isoformat() if n.created_at else None,
