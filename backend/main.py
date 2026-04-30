@@ -17,7 +17,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.orm import Session
 from bs4 import BeautifulSoup
 import google.generativeai as genai
-from rapidfuzz import fuzz, process
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 import models, schemas, crud
 from database import engine, get_db
@@ -456,7 +457,14 @@ def analyze_news_with_gemini(title: str, full_text: str) -> dict:
         print(f"🚨 Gemini 분석 에러: {e}", flush=True)
         return {"category": "오류", "sentiment": "중립", "reason": "분석 실패"}
 
-TITLE_SIMILARITY_THRESHOLD = 88
+TFIDF_SIMILARITY_THRESHOLD = 0.35
+
+def _build_tfidf(titles: list[str]):
+    """제목 리스트로 TF-IDF 벡터라이저를 학습하고 (vectorizer, matrix) 반환"""
+    if not titles:
+        return None, None
+    vec = TfidfVectorizer(analyzer="char_wb", ngram_range=(2, 3))
+    return vec, vec.fit_transform(titles)
 
 def run_news_pipeline():
     """뉴스 데이터 수집, 필터링, 전처리, LLM 분석, DB 적재"""
@@ -471,12 +479,13 @@ def run_news_pipeline():
         else:
             print("🧹 삭제할 오래된 뉴스 기사가 없습니다. 현재 DB가 깔끔한 상태입니다.", flush=True)
 
-        # 기존 (id, title) 목록을 파이프라인 시작 시 한 번만 로드 (제목 유사도 중복 검사용)
-        # rapidfuzz는 문자열 리스트만 받으므로 제목만 추출한 리스트를 별도 유지
-        # 두 리스트는 인덱스가 동일하게 유지되어야 ID 역참조가 가능
+        # 기존 (id, title) 목록을 파이프라인 시작 시 한 번만 로드
         existing_news: list[tuple[int, str]] = crud.get_all_news_titles(db)
         existing_titles: list[str] = [title for _, title in existing_news]
-        print(f"📋 기존 뉴스 제목 {len(existing_titles)}개 로드 완료 (유사도 중복 검사 기준)", flush=True)
+
+        # 기존 제목 전체로 TF-IDF 벡터라이저 학습 (문자 2~3-gram)
+        vectorizer, tfidf_matrix = _build_tfidf(existing_titles)
+        print(f"📋 기존 뉴스 {len(existing_titles)}개 TF-IDF 벡터화 완료 (중복 검사 기준)", flush=True)
 
         url = "https://openapi.naver.com/v1/search/news.json"
         headers = {"X-Naver-Client-Id": NAVER_CLIENT_ID, "X-Naver-Client-Secret": NAVER_CLIENT_SECRET}
@@ -526,20 +535,17 @@ def run_news_pipeline():
 
                 title = clean_html(item.get("title", ""))
 
-                # 2차: 제목 유사도 기반 중복 검사 (rapidfuzz token_sort_ratio)
-                if existing_titles:
-                    match = process.extractOne(
-                        title,
-                        existing_titles,
-                        scorer=fuzz.token_sort_ratio,
-                        score_cutoff=TITLE_SIMILARITY_THRESHOLD,
-                    )
-                    if match:
-                        matched_title, score, matched_idx = match
-                        matched_id, _ = existing_news[matched_idx]
+                # 2차: TF-IDF 코사인 유사도 기반 중복 검사
+                if vectorizer is not None:
+                    new_vec = vectorizer.transform([title])
+                    scores = cosine_similarity(new_vec, tfidf_matrix)[0]
+                    max_idx = int(scores.argmax())
+                    max_score = float(scores[max_idx])
+                    if max_score >= TFIDF_SIMILARITY_THRESHOLD:
+                        matched_id, matched_title = existing_news[max_idx]
                         title_skip_count += 1
                         print(
-                            f"🔁 유사 제목 중복 감지 (유사도 {score}%)\n"
+                            f"🔁 유사 기사 중복 감지 (TF-IDF 유사도 {max_score:.3f})\n"
                             f"   신규: [{title}]\n"
                             f"   기존: [DB ID:{matched_id}] [{matched_title}]",
                             flush=True,
@@ -571,9 +577,10 @@ def run_news_pipeline():
                 }
 
                 saved_news = crud.create_news(db, news_data)
-                # 저장 직후 두 리스트에 동시 추가 → 같은 실행 내 이후 키워드에서도 중복 차단
+                # 저장 직후 리스트 및 벡터라이저 갱신 → 같은 실행 내 이후 키워드에서도 중복 차단
                 existing_news.append((saved_news.id, title))
                 existing_titles.append(title)
+                vectorizer, tfidf_matrix = _build_tfidf(existing_titles)
                 total_saved += 1
                 print(f"✅ 뉴스 적재 완료 [{keyword}] - {ai_result.get('sentiment')}: {ai_result.get('reason')}", flush=True)
 

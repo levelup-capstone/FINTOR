@@ -13,3 +13,4 @@ google-generativeai
 beautifulsoup4
 lxml
 rapidfuzz
+scikit-learn
