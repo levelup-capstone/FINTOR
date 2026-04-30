@@ -17,6 +17,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.orm import Session
 from bs4 import BeautifulSoup
 import google.generativeai as genai
+from rapidfuzz import fuzz, process
 
 import models, schemas, crud
 from database import engine, get_db
@@ -455,6 +456,8 @@ def analyze_news_with_gemini(title: str, full_text: str) -> dict:
         print(f"🚨 Gemini 분석 에러: {e}", flush=True)
         return {"category": "오류", "sentiment": "중립", "reason": "분석 실패"}
 
+TITLE_SIMILARITY_THRESHOLD = 88
+
 def run_news_pipeline():
     """뉴스 데이터 수집, 필터링, 전처리, LLM 분석, DB 적재"""
     print(f"📰 뉴스 파이프라인 가동 ({datetime.now(KST).strftime('%H:%M:%S')} KST)", flush=True)
@@ -467,7 +470,14 @@ def run_news_pipeline():
             print(f"🧹 보관 기간(3일)이 경과한 뉴스 {deleted_news_count}개를 삭제했습니다.", flush=True)
         else:
             print("🧹 삭제할 오래된 뉴스 기사가 없습니다. 현재 DB가 깔끔한 상태입니다.", flush=True)
-        
+
+        # 기존 (id, title) 목록을 파이프라인 시작 시 한 번만 로드 (제목 유사도 중복 검사용)
+        # rapidfuzz는 문자열 리스트만 받으므로 제목만 추출한 리스트를 별도 유지
+        # 두 리스트는 인덱스가 동일하게 유지되어야 ID 역참조가 가능
+        existing_news: list[tuple[int, str]] = crud.get_all_news_titles(db)
+        existing_titles: list[str] = [title for _, title in existing_news]
+        print(f"📋 기존 뉴스 제목 {len(existing_titles)}개 로드 완료 (유사도 중복 검사 기준)", flush=True)
+
         url = "https://openapi.naver.com/v1/search/news.json"
         headers = {"X-Naver-Client-Id": NAVER_CLIENT_ID, "X-Naver-Client-Secret": NAVER_CLIENT_SECRET}
 
@@ -479,8 +489,13 @@ def run_news_pipeline():
             "채권", "원자재", "금", "은", "원화, 속보"
         ]
 
+        total_saved = 0
+        total_link_skip = 0
+        total_title_skip = 0
+
         for keyword in target_keywords:
-            skip_count = 0
+            link_skip_count = 0
+            title_skip_count = 0
             params = {"query": keyword, "display": 15, "sort": "date"}
             res = requests.get(url, headers=headers, params=params)
 
@@ -504,11 +519,33 @@ def run_news_pipeline():
                 if "sid=101" not in link:
                     continue
 
+                # 1차: 링크 기반 중복 검사
                 if crud.get_news_by_link(db, link):
-                    skip_count += 1
+                    link_skip_count += 1
                     continue
 
                 title = clean_html(item.get("title", ""))
+
+                # 2차: 제목 유사도 기반 중복 검사 (rapidfuzz token_sort_ratio)
+                if existing_titles:
+                    match = process.extractOne(
+                        title,
+                        existing_titles,
+                        scorer=fuzz.token_sort_ratio,
+                        score_cutoff=TITLE_SIMILARITY_THRESHOLD,
+                    )
+                    if match:
+                        matched_title, score, matched_idx = match
+                        matched_id, _ = existing_news[matched_idx]
+                        title_skip_count += 1
+                        print(
+                            f"🔁 유사 제목 중복 감지 (유사도 {score}%)\n"
+                            f"   신규: [{title}]\n"
+                            f"   기존: [DB ID:{matched_id}] [{matched_title}]",
+                            flush=True,
+                        )
+                        continue
+
                 description = clean_html(item.get("description", ""))
 
                 full_text = scrape_naver_news_body(link)
@@ -533,14 +570,31 @@ def run_news_pipeline():
                     "created_at": now_utc
                 }
 
-                crud.create_news(db, news_data)
+                saved_news = crud.create_news(db, news_data)
+                # 저장 직후 두 리스트에 동시 추가 → 같은 실행 내 이후 키워드에서도 중복 차단
+                existing_news.append((saved_news.id, title))
+                existing_titles.append(title)
+                total_saved += 1
                 print(f"✅ 뉴스 적재 완료 [{keyword}] - {ai_result.get('sentiment')}: {ai_result.get('reason')}", flush=True)
 
                 # Gemini 무료 API RPM 초과 방지
                 time.sleep(2.1)
 
-            if skip_count > 0:
-                print(f"📊 [{keyword}] 검색 결과 중 총 {skip_count}개의 중복 또는 과거 기사가 제외되었습니다.", flush=True)
+            total_skip = link_skip_count + title_skip_count
+            if total_skip > 0:
+                print(
+                    f"📊 [{keyword}] 총 {total_skip}개 제외 "
+                    f"(링크 중복: {link_skip_count}개 / 제목 유사도 중복: {title_skip_count}개)",
+                    flush=True,
+                )
+            total_link_skip += link_skip_count
+            total_title_skip += title_skip_count
+
+        print(
+            f"🏁 뉴스 수집 사이클 완료 ({datetime.now(KST).strftime('%H:%M:%S')} KST) | "
+            f"신규 적재: {total_saved}개 / 링크 중복 제외: {total_link_skip}개 / 제목 유사도 중복 제외: {total_title_skip}개",
+            flush=True,
+        )
 
     except Exception as e:
         print(f"🚨 뉴스 파이프라인 에러: {e}", flush=True)

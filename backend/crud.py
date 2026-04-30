@@ -110,6 +110,10 @@ def get_news_by_link(db: Session, link: str):
     """[2단계 Deduplication] 링크 기반 중복 기사 검증"""
     return db.query(models.News).filter(models.News.link == link).first()
 
+def get_all_news_titles(db: Session) -> list[tuple[int, str]]:
+    """[3단계 Deduplication] 제목 유사도 비교를 위한 기존 (id, title) 목록 조회"""
+    return [(row[0], row[1]) for row in db.query(models.News.id, models.News.title).all()]
+
 def create_news(db: Session, news_data: dict):
     """신규 기사 적재 (전처리 완료본)"""
     news = models.News(**news_data)
