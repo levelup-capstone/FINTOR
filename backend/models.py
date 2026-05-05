@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
@@ -118,3 +118,114 @@ class NewsView(Base):
     viewed_at = Column(DateTime(timezone=True),
                        default=lambda: datetime.now(timezone.utc),
                        index=True)
+
+
+# ──────────────────────────────────────────────
+# 모의 투자 시뮬레이터
+# ──────────────────────────────────────────────
+
+class GameScenario(Base):
+    """난이도별 시나리오 템플릿. 유저가 버튼을 눌러 시작하면 GameParticipation 생성."""
+    __tablename__ = "game_scenarios"
+
+    id           = Column(Integer, primary_key=True, index=True)
+    stage        = Column(Integer, nullable=False, index=True)   # 1~5
+    name         = Column(String, nullable=False)                # "시즌 #1"
+    theme        = Column(String, nullable=False)                # "고금리 장기화"
+    scenario_key = Column(String, nullable=False, unique=True)
+    assets       = Column(JSONB, nullable=False)                 # ["cash","bonds",...]
+    recap_text   = Column(String, nullable=True)
+    created_at   = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    prices         = relationship("GameDayPrice",      back_populates="scenario", cascade="all, delete-orphan")
+    news           = relationship("GameDayNews",       back_populates="scenario", cascade="all, delete-orphan")
+    macros         = relationship("GameDayMacro",      back_populates="scenario", cascade="all, delete-orphan")
+    participations = relationship("GameParticipation", back_populates="scenario", cascade="all, delete-orphan")
+
+
+class GameDayPrice(Base):
+    __tablename__ = "game_day_prices"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    scenario_id = Column(Integer, ForeignKey("game_scenarios.id", ondelete="CASCADE"), nullable=False, index=True)
+    day_index   = Column(Integer, nullable=False)   # 1~7
+    asset       = Column(String, nullable=False)
+    price       = Column(Float, nullable=False)     # 시작 100 기준
+
+    scenario = relationship("GameScenario", back_populates="prices")
+
+
+class GameDayNews(Base):
+    __tablename__ = "game_day_news"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    scenario_id = Column(Integer, ForeignKey("game_scenarios.id", ondelete="CASCADE"), nullable=False, index=True)
+    day_index   = Column(Integer, nullable=False)   # 1~7
+    slot        = Column(Integer, nullable=False)   # 1~5
+    title       = Column(String, nullable=False)
+    description = Column(String, nullable=False)
+    news_type   = Column(String, nullable=False)    # macro / bullish / bearish / trap / noise
+
+    scenario = relationship("GameScenario", back_populates="news")
+
+
+class GameDayMacro(Base):
+    __tablename__ = "game_day_macros"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    scenario_id   = Column(Integer, ForeignKey("game_scenarios.id", ondelete="CASCADE"), nullable=False, index=True)
+    day_index     = Column(Integer, nullable=False)
+    cpi           = Column(Float, nullable=False)
+    interest_rate = Column(Float, nullable=False)
+    fx_usdkrw     = Column(Float, nullable=False)
+    vix           = Column(Float, nullable=False)
+
+    scenario = relationship("GameScenario", back_populates="macros")
+
+
+class GameParticipation(Base):
+    __tablename__ = "game_participations"
+
+    id           = Column(Integer, primary_key=True, index=True)
+    user_id      = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    scenario_id  = Column(Integer, ForeignKey("game_scenarios.id", ondelete="CASCADE"), nullable=False)
+    start_date   = Column(DateTime(timezone=True), nullable=False)   # 유저가 버튼 누른 시각
+    initial_cash = Column(Float, default=10_000_000, nullable=False)
+    is_finalized = Column(Boolean, default=False, nullable=False)
+    created_at   = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    allocations = relationship("GameAllocation", back_populates="participation", cascade="all, delete-orphan")
+    result      = relationship("GameResult",     back_populates="participation", uselist=False, cascade="all, delete-orphan")
+    scenario    = relationship("GameScenario",   back_populates="participations")
+
+
+class GameAllocation(Base):
+    __tablename__ = "game_allocations"
+
+    id               = Column(Integer, primary_key=True, index=True)
+    participation_id = Column(Integer, ForeignKey("game_participations.id", ondelete="CASCADE"), nullable=False, index=True)
+    day_index        = Column(Integer, nullable=False)
+    allocations      = Column(JSONB, nullable=False)   # {"cash": 20, "bonds": 40, ...}
+    portfolio_value  = Column(Float, nullable=True)
+    return_rate      = Column(Float, nullable=True)
+    created_at       = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    participation = relationship("GameParticipation", back_populates="allocations")
+
+
+class GameResult(Base):
+    __tablename__ = "game_results"
+
+    id               = Column(Integer, primary_key=True, index=True)
+    participation_id = Column(Integer, ForeignKey("game_participations.id", ondelete="CASCADE"), nullable=False, unique=True)
+    final_return     = Column(Float, nullable=True)
+    return_score     = Column(Float, nullable=True)
+    diversity_score  = Column(Float, nullable=True)
+    stability_score  = Column(Float, nullable=True)
+    scenario_score   = Column(Float, nullable=True)
+    total_score      = Column(Float, nullable=True)
+    rank             = Column(Integer, nullable=True)
+    feedback_text    = Column(String, nullable=True)
+    created_at       = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    participation = relationship("GameParticipation", back_populates="result")

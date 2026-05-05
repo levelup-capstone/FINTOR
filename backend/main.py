@@ -21,6 +21,7 @@ import google.generativeai as genai
 import models, schemas, crud
 from database import engine, get_db
 from seed import seed as run_seed
+from game_seed import seed as run_game_seed
 
 # DB 테이블 생성
 models.Base.metadata.create_all(bind=engine)
@@ -545,6 +546,8 @@ scheduler = BackgroundScheduler()
 def startup_event():
     # 포트폴리오 템플릿 시드 데이터 주입
     run_seed()
+    # 게임 시나리오 시드 데이터 주입
+    run_game_seed()
     # 서버 시작 시 최초 1회 실행 (블로킹 방지를 위해 백그라운드 스레드로)
     threading.Thread(target=collect_and_save_market_data, daemon=True).start()
     threading.Thread(target=run_news_pipeline, daemon=True).start()
