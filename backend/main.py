@@ -812,23 +812,13 @@ def submit_survey(
         score      = calc_risk_score(survey_data)
         risk_level = score_to_level(score)
         risk_label = RISK_LABELS[risk_level]
-        templates  = recommend_templates(db, risk_level, survey_data.preferred_assets)
 
         return {
             "success": True,
-            "message": "설문이 완료되어 포트폴리오를 추천드립니다.",
+            "message": "설문이 완료되었습니다.",
             "data": {
                 "risk_level": risk_level,
                 "risk_label": risk_label,
-                "recommended_portfolios": [
-                    {
-                        "template_id": t.id,
-                        "title":       t.title,
-                        "description": t.description,
-                        "allocations": t.allocations,
-                    }
-                    for t in templates
-                ],
             },
         }
 

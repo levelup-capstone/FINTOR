@@ -43,7 +43,6 @@ class RecommendedPortfolio(BaseModel):
 class SurveyResponseData(BaseModel):
     risk_level: int
     risk_label: str
-    recommended_portfolios: List[RecommendedPortfolio]
 
 class SurveyResponse(BaseModel):
     success: bool

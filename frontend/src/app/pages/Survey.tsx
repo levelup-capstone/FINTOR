@@ -1,41 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 
-// API enum → 한국어 자산명
-const assetNameMap: Record<string, string> = {
-  'growth-stock': '성장주',
-  'etf': 'ETF',
-  'bluechip-stock': '배당 우량주',
-  'deposit': '예적금',
-  'bonds': '채권',
-  'coin': '코인',
-  'krw': '원화',
-  'gold': '금',
-};
-
-// 도넛 차트 자산별 색상
-const assetColorMap: Record<string, string> = {
-  'growth-stock': '#EF4444', // 성장주 - 공격적 성장, 빨강
-  'etf':          '#3B82F6', // ETF - 분산 안정, 파랑
-  'bluechip-stock':'#1A237E',// 배당 우량주 - 신뢰/안정, 딥네이비
-  'deposit':      '#10B981', // 예적금 - 안전/현금성, 초록
-  'bonds':        '#8B5CF6', // 채권 - 중간 안정, 보라
-  'coin':         '#F97316', // 코인 - 고위험 고수익, 주황
-  'krw':          '#94A3B8', // 원화 - 유동성, 회색
-  'gold':         '#EAB308', // 금 - 실물 자산, 골드
-};
-
-// 포트폴리오 카드 뱃지 색상 (3개 고정)
-const portfolioBadgeColors = ['#3b82f6', '#eab308', '#ef4444'];
-
-// 백엔드 응답 타입
-type ApiAllocation = { asset: string; ratio: number };
-type ApiPortfolio = {
-  template_id: number;
-  title: string;
-  description?: string | null;
-  allocations: ApiAllocation[];
+// 투자 성향 레벨별 정보
+const riskLevelInfo: Record<number, { label: string; color: string; icon: string; description: string }> = {
+  1: { label: '안정형',     color: '#10B981', icon: 'shield',         description: '원금 보존을 최우선으로 하며 안전한 자산 위주로 투자합니다.' },
+  2: { label: '안정추구형', color: '#3B82F6', icon: 'verified_user',  description: '안정성을 추구하면서 소폭의 수익도 기대하는 유형입니다.' },
+  3: { label: '위험중립형', color: '#8B5CF6', icon: 'balance',        description: '위험과 수익 사이에서 균형 잡힌 투자를 선호합니다.' },
+  4: { label: '적극투자형', color: '#F97316', icon: 'trending_up',    description: '수익을 위해 어느 정도의 위험을 기꺼이 감수하는 유형입니다.' },
+  5: { label: '공격투자형', color: '#EF4444', icon: 'local_fire_department', description: '고수익을 목표로 높은 위험도 과감하게 수용합니다.' },
 };
 
 const questions = [
@@ -57,10 +29,10 @@ export function Survey() {
   const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
   const [showIntro, setShowIntro] = useState(true);
   const [isCompleted, setIsCompleted] = useState(false);
-  const [showPortfolioSelection, setShowPortfolioSelection] = useState(false);
-  const [selectedPortfolio, setSelectedPortfolio] = useState<ApiPortfolio | null>(null);
-  const [apiPortfolios, setApiPortfolios] = useState<ApiPortfolio[]>([]);
-  const [isLoadingPortfolios, setIsLoadingPortfolios] = useState(false);
+  const [showRiskResult, setShowRiskResult] = useState(false);
+  const [riskLevel, setRiskLevel] = useState<number | null>(null);
+  const [riskLabel, setRiskLabel] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem('surveyAnswers');
@@ -109,14 +81,13 @@ export function Survey() {
 
   const handleRestart = () => {
     setIsCompleted(false);
-    setShowPortfolioSelection(false);
+    setShowRiskResult(false);
+    setRiskLevel(null);
+    setRiskLabel('');
     setCurrentStep(0);
     setAnswers({});
     setSelectedOption(null);
-    setSelectedPortfolio(null);
-    setApiPortfolios([]);
     localStorage.removeItem('surveyAnswers');
-    localStorage.removeItem('selectedPortfolio');
   };
 
   // ── API enum 매핑 ─────────────────────────────────────────────────────────
@@ -199,56 +170,10 @@ export function Survey() {
     };
   };
 
-  // ── 목업 데이터 (백엔드 미구현 시 테스트용) ──────────────────────────────
-  const USE_MOCK = false; // 백엔드 준비되면 false로 변경
-
-  const mockPortfolios: ApiPortfolio[] = [
-    {
-      template_id: 1,
-      title: '안정형',
-      allocations: [
-        { asset: 'deposit', ratio: 35 },
-        { asset: 'bonds', ratio: 30 },
-        { asset: 'bluechip-stock', ratio: 20 },
-        { asset: 'gold', ratio: 10 },
-        { asset: 'krw', ratio: 5 },
-      ],
-    },
-    {
-      template_id: 2,
-      title: '위험중립형',
-      allocations: [
-        { asset: 'etf', ratio: 30 },
-        { asset: 'bluechip-stock', ratio: 25 },
-        { asset: 'growth-stock', ratio: 20 },
-        { asset: 'bonds', ratio: 15 },
-        { asset: 'krw', ratio: 10 },
-      ],
-    },
-    {
-      template_id: 3,
-      title: '공격투자형',
-      allocations: [
-        { asset: 'growth-stock', ratio: 40 },
-        { asset: 'coin', ratio: 25 },
-        { asset: 'etf', ratio: 20 },
-        { asset: 'gold', ratio: 10 },
-        { asset: 'krw', ratio: 5 },
-      ],
-    },
-  ];
-
-  // 포트폴리오 보기 버튼 → API 호출 후 포트폴리오 선택 화면으로 이동
-  const handleShowPortfolios = async () => {
-    setIsLoadingPortfolios(true);
+  // 설문 제출 → 성향 결과 화면으로 이동
+  const handleSubmitSurvey = async () => {
+    setIsSubmitting(true);
     try {
-      if (USE_MOCK) {
-        // 목업: 실제 API 대신 0.8초 딜레이 후 더미 데이터 반환
-        await new Promise((r) => setTimeout(r, 800));
-        setApiPortfolios(mockPortfolios);
-        setShowPortfolioSelection(true);
-        return;
-      }
       const token = localStorage.getItem('accessToken');
       const res = await fetch('http://localhost:8000/api/survey', {
         method: 'POST',
@@ -259,156 +184,80 @@ export function Survey() {
         body: JSON.stringify(buildPayload()),
       });
       const data = await res.json();
-      if (data.success && data.data?.recommended_portfolios) {
-        setApiPortfolios(data.data.recommended_portfolios);
-        setShowPortfolioSelection(true);
+      if (data.success && data.data) {
+        setRiskLevel(data.data.risk_level);
+        setRiskLabel(data.data.risk_label);
+        setShowRiskResult(true);
+        localStorage.removeItem('surveyAnswers');
       } else {
-        console.error('포트폴리오 응답 오류:', data);
+        console.error('설문 제출 오류:', data);
       }
     } catch (e) {
-      console.error('포트폴리오 불러오기 실패:', e);
+      console.error('설문 제출 실패:', e);
     } finally {
-      setIsLoadingPortfolios(false);
+      setIsSubmitting(false);
     }
   };
 
-  // 포트폴리오 선택 확인 → 대시보드 이동
-  const handleConfirm = async () => {
-    if (!selectedPortfolio) return;
-    try {
-      const raw = localStorage.getItem('loginResult');
-      const userId = raw ? JSON.parse(raw)?.data?.userId : null;
-      const token  = localStorage.getItem('accessToken');
-      if (userId && token) {
-        await fetch('http://localhost:8000/api/v1/portfolios', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({
-            userid:      userId,
-            template_id: selectedPortfolio.template_id,
-          }),
-        });
-      }
-    } catch {}
-    localStorage.setItem('selectedPortfolio', JSON.stringify(selectedPortfolio));
-    localStorage.removeItem('surveyAnswers');
+  // 성향 결과 확인 → 대시보드 이동
+  const handleGoToDashboard = () => {
     navigate('/dashboard', { replace: true });
   };
 
   const currentQuestion = questions[currentStep];
   const progress = ((currentStep + 1) / questions.length) * 100;
 
-  // ── 포트폴리오 선택 화면 ──────────────────────────────────────────────────
-  if (showPortfolioSelection) {
+  // ── 성향 결과 화면 ──────────────────────────────────────────────────────
+  if (showRiskResult && riskLevel !== null) {
+    const info = riskLevelInfo[riskLevel];
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center py-8 px-4">
-        <div className="w-full max-w-6xl">
-          <div className="bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/20 p-6 md:p-10">
-            {/* 헤더 */}
-            <div className="text-center mb-8">
-              <span className="inline-block px-3 py-1 rounded-full bg-secondary-fixed text-on-secondary-fixed text-[10px] font-bold tracking-widest uppercase mb-4">
-                투자 성향 기반 자산 유형 분석 결과
+        <div className="w-full max-w-xl">
+          <div className="bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/20 px-8 py-14 md:px-14 md:py-20 flex flex-col items-center text-center gap-8">
+            {/* 성향 아이콘 */}
+            <div className="inline-flex items-center justify-center w-24 h-24 rounded-full shadow-lg" style={{ backgroundColor: info.color }}>
+              <span className="material-symbols-outlined text-white text-5xl" style={{ fontVariationSettings: '"FILL" 1, "wght" 700' }}>
+                {info.icon}
               </span>
-              <h1 className="text-2xl md:text-4xl font-black font-headline tracking-tight text-[#1A237E] dark:text-white mb-2">
-                포트폴리오 선택
-              </h1>
-              <p className="text-sm md:text-base text-on-surface-variant font-bold tracking-widest uppercase">3가지 포트폴리오가 설문 결과에 따라 제공되었습니다.</p>
-              <p className="text-sm md:text-base text-on-surface-variant font-bold tracking-widest uppercase">(선택후 대시보드에서 비율과 자산 종류 수정이 가능합니다.)</p>
             </div>
 
-            {/* 포트폴리오 카드 */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5 mb-8">
-              {apiPortfolios.map((portfolio, idx) => {
-                const chartData = portfolio.allocations.map((a) => ({
-                  name: a.asset,
-                  value: a.ratio,
-                  color: assetColorMap[a.asset] ?? '#90A4AE',
-                }));
-                const badgeColor = portfolioBadgeColors[idx] ?? '#3b82f6';
-                const assetNames = portfolio.allocations
-                  .map((a) => assetNameMap[a.asset] ?? a.asset)
-                  .join(', ');
-                const isSelected = selectedPortfolio?.template_id === portfolio.template_id;
+            {/* 결과 텍스트 */}
+            <div className="space-y-3">
+              <p className="text-sm font-bold text-on-surface-variant uppercase tracking-widest">나의 투자 성향</p>
+              <h1 className="text-3xl md:text-4xl font-black font-headline tracking-tight dark:text-white" style={{ color: info.color }}>
+                {riskLabel}
+              </h1>
+              <p className="text-base md:text-lg text-on-surface-variant font-medium leading-relaxed">
+                {info.description}
+              </p>
+            </div>
 
-                return (
-                  <button
-                    key={portfolio.template_id}
-                    onClick={() => setSelectedPortfolio(portfolio)}
-                    className={`group relative p-6 md:p-7 rounded-xl border-2 transition-all duration-300 text-left min-h-[380px] flex flex-col hover:scale-[1.03] hover:shadow-xl ${
-                      isSelected
-                        ? 'border-[#1A237E] bg-surface-container-low shadow-xl scale-[1.03]'
-                        : 'border-outline-variant/30 bg-surface-container-low hover:border-[#1A237E]/40'
-                    }`}
-                  >
-                    {/* 선택 체크 */}
-                    <div className={`absolute top-3 right-3 w-5 h-5 rounded-full border-2 transition-all flex items-center justify-center ${
-                      isSelected
-                        ? 'border-[#1A237E] bg-[#1A237E]'
-                        : 'border-outline-variant group-hover:border-[#1A237E]'
-                    }`}>
-                      {isSelected && (
-                        <span className="material-symbols-outlined text-white text-xs" style={{ fontVariationSettings: '"FILL" 1, "wght" 700' }}>check</span>
-                      )}
-                    </div>
-
-                    {/* 포트폴리오 이름 뱃지 */}
-                    <div className="inline-flex items-center justify-center px-3 py-1.5 rounded-full mb-5 text-white font-bold text-sm shadow-sm" style={{ backgroundColor: badgeColor }}>
-                      {portfolio.title}
-                    </div>
-
-                    {/* 도넛 차트 + 범례 */}
-                    <div className="flex items-center justify-center mb-6 flex-grow relative">
-                      {/* 클릭 시 범례 오버레이 고정 */}
-                      {isSelected && (
-                        <div className="absolute inset-0 flex items-center justify-center z-10">
-                          <div className="bg-white/95 dark:bg-slate-800/95 rounded-xl shadow-lg border border-outline-variant/20 px-6 py-4 space-y-2.5">
-                            {chartData.map((entry) => (
-                              <div key={entry.name} className="flex items-center gap-3">
-                                <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: entry.color }} />
-                                <span className="text-sm font-bold text-on-surface-variant w-20">{assetNameMap[entry.name] ?? entry.name}</span>
-                                <span className="text-sm font-black text-[#1A237E]">{entry.value}%</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      <div className={`w-40 h-40 md:w-44 md:h-44 transition-transform duration-300 group-hover:scale-110 ${isSelected ? 'scale-110' : ''}`}>
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie data={chartData} cx="50%" cy="50%" innerRadius="55%" outerRadius="90%" startAngle={90} endAngle={-270} dataKey="value">
-                              {chartData.map((entry, index) => (
-                                <Cell key={index} fill={entry.color} />
-                              ))}
-                            </Pie>
-                          </PieChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-
-                    {/* 구성 자산 */}
-                    <div className="pt-4 border-t border-outline-variant/30 mt-auto">
-                      <p className="text-xs font-bold text-on-surface-variant mb-1.5 uppercase tracking-wide">구성 금융 자산</p>
-                      <p className="text-sm md:text-base text-[#1A237E] dark:text-indigo-200 font-bold leading-snug">{assetNames}</p>
-                    </div>
-                  </button>
-                );
-              })}
+            {/* 레벨 인디케이터 */}
+            <div className="w-full bg-surface-container-low rounded-xl p-5 border border-outline-variant/20">
+              <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-3">투자 성향 레벨</p>
+              <div className="flex items-center justify-between gap-2">
+                {[1, 2, 3, 4, 5].map((lvl) => (
+                  <div key={lvl} className="flex-1 flex flex-col items-center gap-1.5">
+                    <div
+                      className="w-full h-2 rounded-full transition-all"
+                      style={{ backgroundColor: lvl <= riskLevel ? info.color : '#E2E8F0' }}
+                    />
+                    <span className={`text-[10px] font-bold ${lvl === riskLevel ? 'text-on-surface' : 'text-on-surface-variant/50'}`}>
+                      {riskLevelInfo[lvl].label}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* 버튼 */}
-            <div className="flex items-center justify-center gap-3">
-              <button
-                disabled={!selectedPortfolio}
-                onClick={handleConfirm}
-                className={`w-full max-w-sm px-10 py-3 rounded-lg font-bold text-lg md:text-base transition-all duration-200 flex items-center justify-center gap-2 ${
-                  selectedPortfolio
-                    ? 'bg-[#1A237E] text-white hover:bg-[#1A237E]/90 hover:shadow-lg active:scale-95'
-                    : 'bg-surface-container-low text-on-surface-variant cursor-not-allowed'
-                }`}
-              >
-                확인
-              </button>
-            </div>
+            <button
+              onClick={handleGoToDashboard}
+              className="w-full px-10 py-3.5 rounded-xl font-bold text-base md:text-lg bg-[#1A237E] text-white transition-all duration-200 hover:bg-[#1A237E]/90 hover:scale-105 hover:shadow-[0_0_20px_rgba(26,35,126,0.3)] active:scale-95 flex items-center justify-center gap-2"
+            >
+              대시보드로 이동
+              <span className="material-symbols-outlined text-xl">arrow_forward</span>
+            </button>
           </div>
         </div>
       </div>
@@ -470,23 +319,23 @@ export function Survey() {
                   다시 시작
                 </button>
                 <button
-                  onClick={handleShowPortfolios}
-                  disabled={isLoadingPortfolios}
+                  onClick={handleSubmitSurvey}
+                  disabled={isSubmitting}
                   className={`w-full md:w-auto px-6 py-2.5 rounded-lg font-bold text-sm md:text-base transition-all duration-200 flex items-center justify-center gap-2 ${
-                    isLoadingPortfolios
+                    isSubmitting
                       ? 'bg-[#1A237E]/60 text-white cursor-not-allowed'
                       : 'bg-[#1A237E] text-white hover:bg-[#1A237E]/90 hover:scale-105 hover:shadow-[0_0_20px_rgba(26,35,126,0.3)] hover:gap-3 active:scale-95'
                   }`}
                 >
-                  {isLoadingPortfolios ? (
+                  {isSubmitting ? (
                     <>
                       <span className="material-symbols-outlined text-base animate-spin">progress_activity</span>
-                      불러오는 중...
+                      분석 중...
                     </>
                   ) : (
                     <>
-                      <span className="material-symbols-outlined text-base">bar_chart</span>
-                      설문 결과에 따른 추천 포트폴리오 보기
+                      <span className="material-symbols-outlined text-base">psychology</span>
+                      나의 투자 성향 확인하기
                     </>
                   )}
                 </button>

@@ -1,4 +1,4 @@
-"""
+ """
 일단 python seed.py가 안돼서 portfolio_templates에 값을 넣고 싶으면
 cd backend 한뒤에
 docker exec -it fintor-backend python seed.py
