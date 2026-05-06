@@ -103,6 +103,7 @@ class News(Base):
     description = Column(String, nullable=False)
     category    = Column(String, nullable=False, default="분석대기")
     sentiment   = Column(String, nullable=False, default="분석대기")
+    tag         = Column(String, nullable=False, default="기타")
     reason      = Column(String, nullable=False, default="OpenAI 연동 대기중")
     link        = Column(String, unique=True, index=True, nullable=False)
     pub_date    = Column(String, nullable=False)

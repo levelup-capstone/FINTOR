@@ -17,6 +17,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.orm import Session
 from bs4 import BeautifulSoup
 import google.generativeai as genai
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 import models, schemas, crud
 from database import engine, get_db
@@ -28,7 +30,8 @@ models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Fintor Auth Server")
 
-DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
+# DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
+DEV_MODE = False
 KST = timezone(timedelta(hours=9))
 
 # --- [CORS 설정] ---
@@ -435,8 +438,12 @@ def analyze_news_with_gemini(title: str, full_text: str) -> dict:
 
     [출력 형식 (JSON)]
     {{
-        "category": "주식, ETF, 예적금, 채권, 암호화폐, 원화, 금, 기타 중 택1",
-        "sentiment": "호재, 악재, 중립 중 택1",
+        "category": "주식, ETF, 예적금, 채권, 암호화폐, 원화, 금, 기타 중 반드시 택1",
+        "sentiment": "호재, 악재, 중립 중 반드시 택1",
+        "tag": "반도체, 디스플레이, IT, 게임, AI, 로봇, 통신/네트워크, 자동차, 
+        배터리, 조선, 우주항공, 방산, 바이오, 헬스케어, 금융, 증권, 가상자산/핀테크, 
+        철강/금속, 화학/정유, 건설/건자재, 유통/소비재, 화장품/의류, 음식료, 엔터테인먼트/미디어, 여행/항공, 에너지/환경, 
+        전력/유틸리티, 기타 중 기사 본문의 핵심 주제와 가장 밀접한 것 반드시 택1",
         "reason": "이 기사가 왜 해당 감성(호재/악재/중립)인지 본문 내용을 바탕으로 50자 이내로 명확하게 존댓말로 작성"
     }}
     """
@@ -451,12 +458,36 @@ def analyze_news_with_gemini(title: str, full_text: str) -> dict:
         print(f"🚨 Gemini 분석 에러: {e}", flush=True)
         return {"category": "오류", "sentiment": "중립", "reason": "분석 실패"}
 
+TFIDF_SIMILARITY_THRESHOLD = 0.35
+
+def _build_tfidf(titles: list[str]):
+    """제목 리스트로 TF-IDF 벡터라이저를 학습하고 (vectorizer, matrix) 반환"""
+    if not titles:
+        return None, None
+    vec = TfidfVectorizer(analyzer="char_wb", ngram_range=(2, 3))
+    return vec, vec.fit_transform(titles)
+
 def run_news_pipeline():
     """뉴스 데이터 수집, 필터링, 전처리, LLM 분석, DB 적재"""
     print(f"📰 뉴스 파이프라인 가동 ({datetime.now(KST).strftime('%H:%M:%S')} KST)", flush=True)
     db: Session = next(get_db())
 
     try:
+        # 3일이 경과한 과거 기사 DB에서 삭제
+        deleted_news_count = crud.delete_old_news(db, days_to_keep=3)
+        if deleted_news_count > 0:
+            print(f"🧹 보관 기간(3일)이 경과한 뉴스 {deleted_news_count}개를 삭제했습니다.", flush=True)
+        else:
+            print("🧹 삭제할 오래된 뉴스 기사가 없습니다. 현재 DB가 깔끔한 상태입니다.", flush=True)
+
+        # 기존 (id, title) 목록을 파이프라인 시작 시 한 번만 로드
+        existing_news: list[tuple[int, str]] = crud.get_all_news_titles(db)
+        existing_titles: list[str] = [title for _, title in existing_news]
+
+        # 기존 제목 전체로 TF-IDF 벡터라이저 학습 (문자 2~3-gram)
+        vectorizer, tfidf_matrix = _build_tfidf(existing_titles)
+        print(f"📋 기존 뉴스 {len(existing_titles)}개 TF-IDF 벡터화 완료 (중복 검사 기준)", flush=True)
+
         url = "https://openapi.naver.com/v1/search/news.json"
         headers = {"X-Naver-Client-Id": NAVER_CLIENT_ID, "X-Naver-Client-Secret": NAVER_CLIENT_SECRET}
 
@@ -468,8 +499,13 @@ def run_news_pipeline():
             "채권", "원자재", "금", "은", "원화, 속보"
         ]
 
+        total_saved = 0
+        total_link_skip = 0
+        total_title_skip = 0
+
         for keyword in target_keywords:
-            skip_count = 0
+            link_skip_count = 0
+            title_skip_count = 0
             params = {"query": keyword, "display": 15, "sort": "date"}
             res = requests.get(url, headers=headers, params=params)
 
@@ -493,18 +529,37 @@ def run_news_pipeline():
                 if "sid=101" not in link:
                     continue
 
+                # 1차: 링크 기반 중복 검사
                 if crud.get_news_by_link(db, link):
-                    skip_count += 1
+                    link_skip_count += 1
                     continue
 
                 title = clean_html(item.get("title", ""))
+
+                # 2차: TF-IDF 코사인 유사도 기반 중복 검사
+                if vectorizer is not None:
+                    new_vec = vectorizer.transform([title])
+                    scores = cosine_similarity(new_vec, tfidf_matrix)[0]
+                    max_idx = int(scores.argmax())
+                    max_score = float(scores[max_idx])
+                    if max_score >= TFIDF_SIMILARITY_THRESHOLD:
+                        matched_id, matched_title = existing_news[max_idx]
+                        title_skip_count += 1
+                        print(
+                            f"🔁 유사 기사 중복 감지 (TF-IDF 유사도 {max_score:.3f})\n"
+                            f"   신규: [{title}]\n"
+                            f"   기존: [DB ID:{matched_id}] [{matched_title}]",
+                            flush=True,
+                        )
+                        continue
+
                 description = clean_html(item.get("description", ""))
 
                 full_text = scrape_naver_news_body(link)
                 if not full_text:
                     full_text = description
 
-                print(f"🤖 Gemini 본문 분석 중 [{title}]", flush=True)
+                print(f"🤖 뉴스 본문 분석 중 [{title}]", flush=True)
                 start_time = time.time()
                 ai_result = analyze_news_with_gemini(title, full_text)
                 execution_time = time.time() - start_time
@@ -516,19 +571,38 @@ def run_news_pipeline():
                     "description": description,
                     "category": ai_result.get("category", "오류"),
                     "sentiment": ai_result.get("sentiment", "중립"),
+                    "tag": ai_result.get("tag", "기타"),
                     "reason": ai_result.get("reason", "분석 실패"),
                     "pub_date": pub_date_str,
                     "created_at": now_utc
                 }
 
-                crud.create_news(db, news_data)
+                saved_news = crud.create_news(db, news_data)
+                # 저장 직후 리스트 및 벡터라이저 갱신 → 같은 실행 내 이후 키워드에서도 중복 차단
+                existing_news.append((saved_news.id, title))
+                existing_titles.append(title)
+                vectorizer, tfidf_matrix = _build_tfidf(existing_titles)
+                total_saved += 1
                 print(f"✅ 뉴스 적재 완료 [{keyword}] - {ai_result.get('sentiment')}: {ai_result.get('reason')}", flush=True)
 
                 # Gemini 무료 API RPM 초과 방지
                 time.sleep(2.1)
 
-            if skip_count > 0:
-                print(f"📊 [{keyword}] 검색 결과 중 총 {skip_count}개의 중복 또는 과거 기사가 제외되었습니다.", flush=True)
+            total_skip = link_skip_count + title_skip_count
+            if total_skip > 0:
+                print(
+                    f"📊 [{keyword}] 총 {total_skip}개 제외 "
+                    f"(링크 중복: {link_skip_count}개 / 제목 유사도 중복: {title_skip_count}개)",
+                    flush=True,
+                )
+            total_link_skip += link_skip_count
+            total_title_skip += title_skip_count
+
+        print(
+            f"🏁 뉴스 수집 사이클 완료 ({datetime.now(KST).strftime('%H:%M:%S')} KST) | "
+            f"신규 적재: {total_saved}개 / 링크 중복 제외: {total_link_skip}개 / 제목 유사도 중복 제외: {total_title_skip}개",
+            flush=True,
+        )
 
     except Exception as e:
         print(f"🚨 뉴스 파이프라인 에러: {e}", flush=True)
@@ -544,6 +618,11 @@ scheduler = BackgroundScheduler()
 
 @app.on_event("startup")
 def startup_event():
+    if DEV_MODE:
+        print("💻 개발 모드입니다.")
+    else:
+        print("🏢 운영 모드입니다.")
+
     # 포트폴리오 템플릿 시드 데이터 주입
     run_seed()
     # 게임 시나리오 시드 데이터 주입
@@ -559,7 +638,7 @@ def startup_event():
     scheduler.add_job(run_news_pipeline, "interval", minutes=news_interval)
     scheduler.start()
     print(f"⏰ 스케줄러 시작 (지수 {index_interval}분 / 뉴스 {news_interval}분 간격)")
-
+    
 @app.on_event("shutdown")
 def shutdown_event():
     scheduler.shutdown()
@@ -613,6 +692,7 @@ def get_market_news(db: Session = Depends(get_db)):
                 "category":    n.category,
                 "sentiment":   n.sentiment,
                 "reason":      n.reason,
+                "tag":         n.tag,
                 "link":        n.link,
                 "pub_date":    n.pub_date,
                 "created_at":  n.created_at.isoformat() if n.created_at else None,
