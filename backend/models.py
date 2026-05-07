@@ -130,7 +130,7 @@ class GameScenario(Base):
     __tablename__ = "game_scenarios"
 
     id           = Column(Integer, primary_key=True, index=True)
-    stage        = Column(Integer, nullable=False, index=True)   # 1~5
+    season       = Column(Integer, nullable=False, index=True)   # 1~5
     name         = Column(String, nullable=False)                # "시즌 #1"
     theme        = Column(String, nullable=False)                # "고금리 장기화"
     scenario_key = Column(String, nullable=False, unique=True)
@@ -165,6 +165,7 @@ class GameDayNews(Base):
     slot        = Column(Integer, nullable=False)   # 1~5
     title       = Column(String, nullable=False)
     description = Column(String, nullable=False)
+    hint        = Column(String, nullable=True)     # 👉 로 시작하는 학습 힌트 (1단계 전체, 2단계 절반만)
     news_type   = Column(String, nullable=False)    # macro / bullish / bearish / trap / noise
 
     scenario = relationship("GameScenario", back_populates="news")
