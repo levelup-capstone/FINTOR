@@ -5,7 +5,7 @@ export function BottomNav() {
 
   const items = [
     { label: '대시보드', to: '/dashboard', icon: 'dashboard' },
-    { label: '기록', to: '/dashboard/record', icon: 'edit_note' },
+    { label: '시뮬레이터', to: '/dashboard/simulator', icon: 'play_circle' },
     { label: '퀴즈', to: '/dashboard/quiz', icon: 'quiz' },
     { label: '뉴스', to: '/dashboard/news', icon: 'newspaper' },
   ];
