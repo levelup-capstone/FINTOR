@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd \"c:\\\\Users\\\\ngw12\\\\Desktop\\\\Project\\\\Capstone Desgin\" && git show 29f3a40:frontend/src/app/pages/SimulatorDashboard.tsx > \"c:\\\\Users\\\\ngw12\\\\AppData\\\\Local\\\\Temp\\\\SimulatorDashboard_orig.txt\" && echo done)",
+      "Bash(docker exec fintor-db psql -U fintor12 -d fintor_db -c ' *)",
+      "Bash(docker exec *)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\ngw12\\AppData\\Local\\Temp"
+    ]
+  }
+}

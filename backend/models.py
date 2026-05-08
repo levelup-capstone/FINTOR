@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, String, Text, Float, DateTime, ForeignKey, Boolean
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
@@ -210,6 +210,8 @@ class GameAllocation(Base):
     allocations      = Column(JSONB, nullable=False)   # {"cash": 20, "bonds": 40, ...}
     portfolio_value  = Column(Float, nullable=True)
     return_rate      = Column(Float, nullable=True)
+    tags             = Column(JSONB, nullable=True)    # ["#태그1", "#태그2", ...]
+    memo             = Column(Text, nullable=True)
     created_at       = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     participation = relationship("GameParticipation", back_populates="allocations")

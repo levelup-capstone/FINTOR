@@ -636,8 +636,9 @@ def startup_event():
     news_interval  = 10 if DEV_MODE else 30
     scheduler.add_job(collect_and_save_market_data, "interval", minutes=index_interval)
     scheduler.add_job(run_news_pipeline, "interval", minutes=news_interval)
+    scheduler.add_job(_game_daily_settlement, "cron", hour=0, minute=0, timezone=KST)
     scheduler.start()
-    print(f"⏰ 스케줄러 시작 (지수 {index_interval}분 / 뉴스 {news_interval}분 간격)")
+    print(f"⏰ 스케줄러 시작 (지수 {index_interval}분 / 뉴스 {news_interval}분 / 게임 정산 매일 자정 KST)")
     
 @app.on_event("shutdown")
 def shutdown_event():
@@ -953,3 +954,332 @@ def get_user_level(user_id: int, db: Session = Depends(get_db)):
             "updatedAt": user_level.updated_at.isoformat() if user_level.updated_at else None
         }
     }
+
+
+# =====================================================================
+# [게임 시뮬레이터] 시나리오 목록
+# =====================================================================
+
+@app.get("/api/game/scenarios")
+def get_scenarios(db: Session = Depends(get_db)):
+    scenarios = crud.get_all_scenarios(db)
+    return {
+        "success": True,
+        "data": [
+            {
+                "id":           s.id,
+                "stage":        s.season,
+                "name":         s.name,
+                "theme":        s.theme,
+                "scenario_key": s.scenario_key,
+                "assets":       s.assets,
+            }
+            for s in scenarios
+        ]
+    }
+
+
+# =====================================================================
+# [게임 시뮬레이터] 시뮬레이션 시작
+# =====================================================================
+
+@app.post("/api/game/start")
+def start_game(
+    req: schemas.GameStartRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    scenario = crud.get_scenario_by_id(db, req.scenario_id)
+    if not scenario:
+        return JSONResponse(status_code=404, content={"success": False, "message": "시나리오를 찾을 수 없습니다."})
+
+    # 이미 진행 중인 participation이 있으면 반환
+    existing = crud.get_active_participation(db, current_user.id)
+    if existing and existing.scenario_id == req.scenario_id:
+        return {
+            "success": True,
+            "data": {"participation_id": existing.id, "scenario_id": existing.scenario_id}
+        }
+
+    start_date = datetime.now(KST)
+    p = crud.create_participation(db, current_user.id, req.scenario_id, start_date)
+    return {
+        "success": True,
+        "data": {"participation_id": p.id, "scenario_id": p.scenario_id, "start_date": start_date.isoformat()}
+    }
+
+
+# =====================================================================
+# [게임 시뮬레이터] [DEV ONLY] 다음 일차로 강제 이동 - 테스트 전용, 배포 전 제거 필요
+# =====================================================================
+
+# TODO: 배포 전 이 엔드포인트 제거
+@app.post("/api/game/participation/{participation_id}/dev/advance-day")
+def dev_advance_day(
+    participation_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    # start_date를 하루 앞당겨 today_index를 1 증가시키는 방식으로 일차를 강제 진행
+    p = crud.get_participation(db, participation_id)
+    if not p or p.user_id != current_user.id:
+        return JSONResponse(status_code=404, content={"success": False, "message": "참여 정보를 찾을 수 없습니다."})
+    p.start_date = p.start_date - timedelta(days=1)
+    db.commit()
+    new_today = _calc_today_index(p.start_date)
+    return {"success": True, "data": {"today_index": new_today}}
+
+
+# =====================================================================
+# [게임 시뮬레이터] [DEV ONLY] 시나리오 진행 전체 초기화 - 테스트 전용, 배포 전 제거 필요
+# =====================================================================
+
+# TODO: 배포 전 이 엔드포인트 제거
+@app.post("/api/game/dev/reset-all")
+def dev_reset_all_participations(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    # 해당 유저의 모든 participation을 삭제 (cascade로 allocation/result도 함께 삭제됨)
+    all_participations = db.query(models.GameParticipation).filter(
+        models.GameParticipation.user_id == current_user.id
+    ).all()
+    deleted_count = len(all_participations)
+    for p in all_participations:
+        db.delete(p)
+    db.commit()
+    return {"success": True, "data": {"deleted_count": deleted_count}}
+
+
+# =====================================================================
+# [게임 시뮬레이터] 참여 현황 전체 조회
+# =====================================================================
+
+def _calc_today_index(start_date, total_days: int = 7) -> int:
+    """start_date 기준 경과일 → 1~7 (초과 시 total_days 고정)"""
+    now = datetime.now(KST)
+    if start_date.tzinfo is None:
+        start_date = start_date.replace(tzinfo=KST)
+    elapsed = (now - start_date).days + 1
+    return max(1, min(elapsed, total_days))
+
+
+def _calc_portfolio_value(
+    initial_cash: float,
+    allocations: dict,
+    prices_map: dict,  # {asset: [D1, D2, ..., D7]}
+    day_index: int,
+) -> float:
+    """
+    당일 매매 확정 시 portfolio_value 계산.
+    각 자산 비중 × (당일가격 / D1가격) 으로 수익률 반영.
+    """
+    total = 0.0
+    leftover_ratio = 100.0
+    for asset, ratio in allocations.items():
+        if ratio <= 0:
+            continue
+        prices = prices_map.get(asset)
+        if not prices or len(prices) < day_index:
+            continue
+        d1_price = prices[0]
+        today_price = prices[day_index - 1]
+        if d1_price == 0:
+            continue
+        asset_value = (ratio / 100) * initial_cash * (today_price / d1_price)
+        total += asset_value
+        leftover_ratio -= ratio
+    # 배분되지 않은 비중은 현금(원화)으로 그대로 보존
+    total += (max(leftover_ratio, 0) / 100) * initial_cash
+    return round(total, 2)
+
+
+@app.get("/api/game/participation/{participation_id}")
+def get_participation(
+    participation_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    p = crud.get_participation(db, participation_id)
+    if not p or p.user_id != current_user.id:
+        return JSONResponse(status_code=404, content={"success": False, "message": "참여 정보를 찾을 수 없습니다."})
+
+    scenario  = p.scenario
+    today_idx = _calc_today_index(p.start_date)
+
+    # 가격 데이터 구성 {asset: [D1..D7]}
+    prices_rows = crud.get_prices_by_scenario(db, scenario.id)
+    prices_map: dict[str, list] = {}
+    for row in prices_rows:
+        prices_map.setdefault(row.asset, [None] * 7)
+        prices_map[row.asset][row.day_index - 1] = row.price
+
+    # 거시지표 D1~오늘까지만
+    macros_rows = crud.get_macros_by_scenario(db, scenario.id)
+    macros = [
+        {"day_index": m.day_index, "cpi": m.cpi, "interest_rate": m.interest_rate,
+         "fx_usdkrw": m.fx_usdkrw, "vix": m.vix}
+        for m in macros_rows if m.day_index <= today_idx
+    ]
+
+    # 뉴스 D1~오늘까지
+    news_by_day = {}
+    for day in range(1, today_idx + 1):
+        news_rows = crud.get_news_by_scenario_and_day(db, scenario.id, day)
+        news_by_day[day] = [
+            {"slot": n.slot, "title": n.title, "description": n.description, "news_type": n.news_type}
+            for n in news_rows
+        ]
+
+    # 과거 allocation 내역
+    alloc_rows = crud.get_allocations_by_participation(db, participation_id)
+    allocations = [
+        {"day_index": a.day_index, "allocations": a.allocations,
+         "portfolio_value": a.portfolio_value, "return_rate": a.return_rate,
+         "tags": a.tags or [], "memo": a.memo or ""}
+        for a in alloc_rows
+    ]
+
+    # 현재 총 자산: 가장 최근 allocation의 portfolio_value, 없으면 initial_cash
+    latest_alloc = alloc_rows[-1] if alloc_rows else None
+    current_value = latest_alloc.portfolio_value if latest_alloc else p.initial_cash
+    total_return = round((current_value - p.initial_cash) / p.initial_cash * 100, 2)
+
+    return {
+        "success": True,
+        "data": {
+            "participation_id": p.id,
+            "scenario": {
+                "id":       scenario.id,
+                "stage":    scenario.season,
+                "name":     scenario.name,
+                "theme":    scenario.theme,
+                "assets":   scenario.assets,
+                "recap_text": scenario.recap_text,
+            },
+            "today_index":    today_idx,
+            "is_finalized":   p.is_finalized,
+            "initial_cash":   p.initial_cash,
+            "current_value":  current_value,
+            "total_return":   total_return,
+            "prices":         prices_map,
+            "macros":         macros,
+            "news_by_day":    news_by_day,
+            "allocations":    allocations,
+        }
+    }
+
+
+# =====================================================================
+# [게임 시뮬레이터] 당일 매매 확정
+# =====================================================================
+
+@app.post("/api/game/participation/{participation_id}/allocate")
+def allocate_game(
+    participation_id: int,
+    req: schemas.GameAllocateRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    p = crud.get_participation(db, participation_id)
+    if not p or p.user_id != current_user.id:
+        return JSONResponse(status_code=404, content={"success": False, "message": "참여 정보를 찾을 수 없습니다."})
+    if p.is_finalized:
+        return JSONResponse(status_code=400, content={"success": False, "message": "이미 종료된 시뮬레이션입니다."})
+
+    today_idx = _calc_today_index(p.start_date)
+
+    # 당일 이미 확정한 경우 방지
+    existing = crud.get_allocation_by_day(db, participation_id, today_idx)
+    if existing:
+        return JSONResponse(status_code=400, content={"success": False, "message": "오늘 이미 매매를 확정했습니다."})
+
+    # 가격 데이터 로드
+    prices_rows = crud.get_prices_by_scenario(db, p.scenario_id)
+    prices_map: dict[str, list] = {}
+    for row in prices_rows:
+        prices_map.setdefault(row.asset, [None] * 7)
+        prices_map[row.asset][row.day_index - 1] = row.price
+
+    # portfolio_value 계산 (방법 A: 백엔드 계산)
+    portfolio_value = _calc_portfolio_value(
+        p.initial_cash, req.allocations, prices_map, today_idx
+    )
+    return_rate = round((portfolio_value - p.initial_cash) / p.initial_cash * 100, 2)
+
+    alloc = crud.create_allocation(
+        db, participation_id, today_idx, req.allocations, portfolio_value, return_rate,
+        tags=req.tags, memo=req.memo,
+    )
+
+    # Day 7 확정 시 자동 종료
+    if today_idx >= 7:
+        crud.finalize_participation(db, participation_id)
+
+    return {
+        "success": True,
+        "data": {
+            "day_index":       alloc.day_index,
+            "portfolio_value": alloc.portfolio_value,
+            "return_rate":     alloc.return_rate,
+            "is_finalized":    today_idx >= 7,
+        }
+    }
+
+
+# =====================================================================
+# [게임 시뮬레이터] 자정 자동 정산 (스케줄러)
+# =====================================================================
+
+def _game_daily_settlement():
+    """매일 자정: 당일 미확정 participation을 전날 배분 그대로 정산"""
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        now = datetime.now(KST)
+        print(f"⏰ [게임 정산] {now.strftime('%Y-%m-%d %H:%M')} 시작")
+
+        active_list = db.query(models.GameParticipation).filter(
+            models.GameParticipation.is_finalized == False
+        ).all()
+        print(f"   진행 중인 participation: {len(active_list)}개")
+
+        settled, skipped, finalized = 0, 0, 0
+
+        for p in active_list:
+            today_idx = _calc_today_index(p.start_date)
+            existing = crud.get_allocation_by_day(db, p.id, today_idx)
+            if existing:
+                skipped += 1
+                continue
+
+            prev_alloc = crud.get_allocation_by_day(db, p.id, today_idx - 1)
+            if not prev_alloc:
+                print(f"   ⚠️  participation {p.id} (user {p.user_id}): 전날 배분 없음 — 스킵")
+                skipped += 1
+                continue
+
+            prices_rows = crud.get_prices_by_scenario(db, p.scenario_id)
+            prices_map: dict[str, list] = {}
+            for row in prices_rows:
+                prices_map.setdefault(row.asset, [None] * 7)
+                prices_map[row.asset][row.day_index - 1] = row.price
+
+            portfolio_value = _calc_portfolio_value(
+                p.initial_cash, prev_alloc.allocations, prices_map, today_idx
+            )
+            return_rate = round((portfolio_value - p.initial_cash) / p.initial_cash * 100, 2)
+            crud.create_allocation(db, p.id, today_idx, prev_alloc.allocations, portfolio_value, return_rate)
+            settled += 1
+            print(f"   ✅ participation {p.id} (user {p.user_id}) Day {today_idx} 자동 정산 — ₩{portfolio_value:,.0f} ({return_rate:+.2f}%)")
+
+            if today_idx >= 7:
+                crud.finalize_participation(db, p.id)
+                finalized += 1
+                print(f"   🏁 participation {p.id} 시즌 종료 처리 완료")
+
+        print(f"✅ [게임 정산] 완료 — 정산 {settled}건 / 종료 {finalized}건 / 스킵 {skipped}건")
+    except Exception as e:
+        print(f"🚨 [게임 정산 오류]: {e}")
+    finally:
+        db.close()

@@ -1,90 +1,121 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { fetchParticipation, type ParticipationData } from './simulatorApi';
 
 const TOTAL_DAYS = 7;
-const TODAY_INDEX = 2; // D3 (0-based)
 
-type DaySummary = {
-  day: number;
-  dailyReturn: number | null; // null이면 미래
-  cumulativeReturn: number | null;
-  equity: number | null;
-  status: 'done' | 'today' | 'pending' | 'locked';
+const ASSET_META: Record<string, { label: string; color: string }> = {
+  cash:           { label: '현금',     color: '#059669' },
+  dollar:         { label: '달러',     color: '#16a34a' },
+  bonds:          { label: '채권',     color: '#a855f7' },
+  'gov-bonds':    { label: '국채',     color: '#7c3aed' },
+  tips:           { label: 'TIPS',     color: '#6d28d9' },
+  gold:           { label: '금',       color: '#eab308' },
+  'bluechip-stock': { label: '우량주', color: '#1A237E' },
+  'growth-stock': { label: '성장주',   color: '#dc2626' },
+  'dividend-stock': { label: '배당주', color: '#0891b2' },
+  stocks:         { label: '주식',     color: '#2563eb' },
+  nasdaq:         { label: '나스닥',   color: '#3b82f6' },
+  emerging:       { label: '신흥국',   color: '#0d9488' },
+  coin:           { label: '코인',     color: '#f97316' },
+  bitcoin:        { label: '비트코인', color: '#f59e0b' },
+  reits:          { label: '리츠',     color: '#06b6d4' },
+  commodities:    { label: '원자재',   color: '#84cc16' },
+  oil:            { label: '원유',     color: '#78716c' },
+  agriculture:    { label: '농산물',   color: '#65a30d' },
 };
 
-const DAY_SUMMARIES: DaySummary[] = [
-  { day: 1, dailyReturn: 1.2,  cumulativeReturn: 1.2,  equity: 10_120_000, status: 'done' },
-  { day: 2, dailyReturn: -0.5, cumulativeReturn: 0.7,  equity: 10_069_000, status: 'done' },
-  { day: 3, dailyReturn: 2.8,  cumulativeReturn: 14.2, equity: 12_450_000, status: 'today' },
-  { day: 4, dailyReturn: 0.1,  cumulativeReturn: null, equity: null,        status: 'pending' },
-  { day: 5, dailyReturn: null, cumulativeReturn: null, equity: null,        status: 'locked' },
-  { day: 6, dailyReturn: null, cumulativeReturn: null, equity: null,        status: 'locked' },
-  { day: 7, dailyReturn: null, cumulativeReturn: null, equity: null,        status: 'locked' },
-];
-
-type AllocationRow = { asset: string; color: string; start: number; end: number };
-
-// Day 3 기준 변경 전/후 자산 배분 (mock)
-const ALLOCATIONS_DAY3: AllocationRow[] = [
-  { asset: '예적금',  color: '#60a5fa', start: 10, end: 5  },
-  { asset: '달러',    color: '#16a34a', start: 5,  end: 0  },
-  { asset: '채권',    color: '#a855f7', start: 30, end: 20 },
-  { asset: '금',      color: '#eab308', start: 5,  end: 10 },
-  { asset: '우량주',  color: '#1A237E', start: 30, end: 40 },
-  { asset: '성장주',  color: '#dc2626', start: 10, end: 15 },
-  { asset: 'ETF',     color: '#3b82f6', start: 10, end: 10 },
-  { asset: '코인',    color: '#f97316', start: 0,  end: 0  },
-];
-
-type Trade = { asset: string; type: 'BUY' | 'SELL'; price: number; quantity: number };
-const TRADES_DAY3: Trade[] = [
-  { asset: '우량주', type: 'BUY',  price: 175_500, quantity: 100 },
-  { asset: '성장주', type: 'BUY',  price: 410_200, quantity: 50  },
-  { asset: '채권',   type: 'SELL', price: 92_100,  quantity: 200 },
-  { asset: '달러',   type: 'SELL', price: 195_000, quantity: 50  },
-];
-
-type DayNews = {
-  title: string;
-  summary: string;
-  topic: string;
-};
-const NEWS_DAY3: DayNews[] = [
-  { title: '예상치 상회한 CPI에 기술주 급등', summary: '인플레이션이 예상보다 약간 더 진정되어 성장 부문의 랠리를 촉발했습니다.', topic: '거시', sentiment: '호재' },
-  { title: '금리 인하 기대감에 국채 수익률 하락', summary: '오전 경제 지표 발표 이후 10년물 수익률이 4.2% 아래로 떨어졌습니다.', topic: '금리', sentiment: '악재' },
-  { title: '반도체 지수 사상 최고치 경신', summary: 'AI 수요가 하드웨어 제조 부문의 성과를 계속해서 주도하고 있습니다.', topic: '기업', sentiment: '호재' },
-  { title: '무역 우려 속 유럽 증시 혼조 마감', summary: '투자자들이 지역 데이터와 글로벌 기술주 모멘텀을 저울질하면서 Stoxx 600 지수는 보합세를 보였습니다.', topic: '글로벌', sentiment: '중립' },
-  { title: '지정학적 긴장 고조로 방산주 강세', summary: '글로벌 분쟁 우려가 커지면서 방위산업 관련 주식이 상승 압력을 받고 있습니다.', topic: '리스크', sentiment: '악재' },
-];
-
-// 과거 날짜용 mock fallback (localStorage 데이터가 없으면 사용)
-const MOCK_JOURNALS: Record<number, { tags: string[]; memo: string }> = {
-  1: { tags: ['#금리인상_우려', '#안전자산선호'], memo: 'CPI 예상치 상회로 안전 비중을 늘림.' },
-  2: { tags: ['#리스크 관리'], memo: '매파 발언으로 채권/예적금 비중 확대.' },
-  3: { tags: ['#금리인하_지연', '#기술주랠리'], memo: '기술주 페이크 반등 의심으로 채권 비중 확대.' },
-};
-
-const fmtPct = (v: number | null, sign = true) => {
+const fmtPct = (v: number | null | undefined, sign = true) => {
   if (v == null) return '--';
   const prefix = sign && v > 0 ? '+' : '';
   return `${prefix}${v.toFixed(1)}%`;
 };
 
+type DaySummary = {
+  day: number;
+  returnRate: number | null;
+  portfolioValue: number | null;
+  status: 'done' | 'today' | 'pending' | 'locked';
+};
+
 export function SimulatorCalendar() {
   const navigate = useNavigate();
-  const [selectedDay, setSelectedDay] = useState<number>(TODAY_INDEX + 1);
-  const summary = DAY_SUMMARIES.find((d) => d.day === selectedDay)!;
-  const [journal, setJournal] = useState<{ tags: string[]; memo: string }>({ tags: [], memo: '' });
+  const [pData, setPData] = useState<ParticipationData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [selectedDay, setSelectedDay] = useState<number>(1);
 
-  // 선택된 날짜의 태그/메모 로드 (localStorage 우선, 없으면 mock)
   useEffect(() => {
-    let loaded: { tags: string[]; memo: string } | null = null;
-    try {
-      const raw = localStorage.getItem(`fintor_journal_d${selectedDay}`);
-      if (raw) loaded = JSON.parse(raw);
-    } catch {}
-    setJournal(loaded ?? MOCK_JOURNALS[selectedDay] ?? { tags: [], memo: '' });
-  }, [selectedDay]);
+    const pid = localStorage.getItem('participationId');
+    if (!pid) { setLoading(false); return; }
+    fetchParticipation(Number(pid)).then((d) => {
+      setPData(d);
+      if (d) setSelectedDay(Math.min(d.today_index, TOTAL_DAYS));
+      setLoading(false);
+    });
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-6">
+        <div className="w-full bg-surface-container-lowest rounded-2xl h-36 animate-pulse" />
+      </div>
+    );
+  }
+
+  if (!pData) {
+    return (
+      <div className="flex flex-col gap-8">
+        <button
+          onClick={() => navigate('/dashboard/simulator/season')}
+          className="self-start inline-flex items-center gap-1.5 px-3 py-2 -ml-3 rounded-lg text-sm font-semibold text-on-surface-variant hover:text-[#1A237E] hover:bg-surface-container-low transition-colors"
+        >
+          <span className="material-symbols-outlined text-[18px]">arrow_back</span>
+          시뮬레이터로 돌아가기
+        </button>
+        <div className="text-center text-on-surface-variant py-12">진행 중인 시뮬레이션이 없습니다.</div>
+      </div>
+    );
+  }
+
+  const { scenario, today_index, current_value, total_return, initial_cash, allocations, news_by_day } = pData;
+
+  // Day 요약 빌드
+  const daySummaries: DaySummary[] = Array.from({ length: TOTAL_DAYS }, (_, i) => {
+    const day = i + 1;
+    const alloc = allocations.find((a) => a.day_index === day);
+    let status: DaySummary['status'];
+    if (alloc) {
+      status = day === today_index ? 'today' : 'done';
+    } else if (day === today_index) {
+      status = 'today';
+    } else if (day < today_index) {
+      status = 'pending';
+    } else {
+      status = 'locked';
+    }
+    return {
+      day,
+      returnRate: alloc?.return_rate ?? null,
+      portfolioValue: alloc?.portfolio_value != null ? Math.floor(alloc.portfolio_value) : null,
+      status,
+    };
+  });
+
+  const summary = daySummaries.find((d) => d.day === selectedDay)!;
+  const selectedAlloc = allocations.find((a) => a.day_index === selectedDay);
+  const prevAlloc = allocations.find((a) => a.day_index === selectedDay - 1);
+  const selectedNews = news_by_day[selectedDay] ?? [];
+
+  // 자산 배분 변화 테이블
+  type AllocationRow = { asset: string; label: string; color: string; start: number; end: number };
+  const allocRows: AllocationRow[] = scenario.assets.map((asset) => {
+    const meta = ASSET_META[asset] ?? { label: asset, color: '#94a3b8' };
+    const start = prevAlloc?.allocations[asset] ?? 0;
+    const end = selectedAlloc?.allocations[asset] ?? 0;
+    return { asset, label: meta.label, color: meta.color, start, end };
+  });
+
+  const isUp = total_return >= 0;
 
   return (
     <div className="flex flex-col gap-8">
@@ -102,18 +133,22 @@ export function SimulatorCalendar() {
       <section className="bg-surface-container-lowest rounded-2xl shadow-sm p-6 border border-outline-variant/30 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl md:text-3xl font-black tracking-tight text-on-surface mb-1">
-            시즌 #1 · 고금리 장기화
+            시즌 #{scenario.stage} · {scenario.theme}
           </h1>
-          <p className="text-sm font-medium text-on-surface-variant">2026.04.30 ~ 2026.05.06</p>
+          <p className="text-sm font-medium text-on-surface-variant">{scenario.name}</p>
         </div>
         <div className="flex flex-wrap gap-3 w-full md:w-auto">
           <div className="bg-surface-container p-4 rounded-xl flex flex-col items-center flex-1 md:min-w-[120px]">
             <span className="text-[12px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">총 수익률</span>
-            <span className="text-2xl font-black tracking-tight text-emerald-700">+14.2%</span>
+            <span className={`text-2xl font-black tracking-tight ${isUp ? 'text-emerald-700' : 'text-red-700'}`}>
+              {isUp ? '+' : ''}{total_return.toFixed(2)}%
+            </span>
           </div>
           <div className="bg-surface-container p-4 rounded-xl flex flex-col items-center flex-1 md:min-w-[120px]">
-            <span className="text-[12px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">순위</span>
-            <span className="text-2xl font-black tracking-tight text-[#1A237E]">#42</span>
+            <span className="text-[12px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">총 자산</span>
+            <span className="text-2xl font-black tracking-tight text-[#1A237E]">
+              ₩{Math.floor(current_value).toLocaleString()}
+            </span>
           </div>
         </div>
       </section>
@@ -125,7 +160,7 @@ export function SimulatorCalendar() {
           <span className="text-xs text-on-surface-variant font-semibold">Day{selectedDay} 선택됨</span>
         </div>
         <div className="grid grid-cols-7 gap-2 md:gap-3">
-          {DAY_SUMMARIES.map((d) => {
+          {daySummaries.map((d) => {
             const isSelected = d.day === selectedDay;
             const isToday = d.status === 'today';
             const isLocked = d.status === 'locked';
@@ -150,16 +185,16 @@ export function SimulatorCalendar() {
                 </span>
                 <span
                   className={`text-xs font-semibold ${
-                    d.dailyReturn == null
+                    d.returnRate == null
                       ? 'text-on-surface-variant'
-                      : d.dailyReturn > 0
+                      : d.returnRate > 0
                       ? 'text-emerald-700'
-                      : d.dailyReturn < 0
+                      : d.returnRate < 0
                       ? 'text-red-700'
                       : 'text-on-surface-variant'
                   }`}
                 >
-                  {fmtPct(d.dailyReturn)}
+                  {fmtPct(d.returnRate)}
                 </span>
                 <div className="mt-auto pt-2 border-t border-outline-variant/30 w-full flex justify-center text-[#1A237E]">
                   <span
@@ -189,20 +224,32 @@ export function SimulatorCalendar() {
               Day {selectedDay} 자산
             </h3>
             <div className="text-3xl md:text-4xl font-black tracking-tight text-on-surface mb-3 break-all">
-              {summary.equity != null ? `₩${summary.equity.toLocaleString()}` : '--'}
+              {summary.portfolioValue != null
+                ? `₩${summary.portfolioValue.toLocaleString()}`
+                : selectedDay === today_index && !selectedAlloc
+                ? `₩${initial_cash.toLocaleString()} (미확정)`
+                : '--'}
             </div>
             <div className="flex gap-2 flex-wrap">
-              <span className="bg-emerald-100 text-emerald-700 text-xs font-semibold px-3 py-1 rounded-full flex items-center gap-1">
-                <span className="material-symbols-outlined text-[14px]">trending_up</span>
-                일일 {fmtPct(summary.dailyReturn)}
+              <span className={`text-xs font-semibold px-3 py-1 rounded-full flex items-center gap-1 ${
+                summary.returnRate == null
+                  ? 'bg-surface-container text-on-surface-variant'
+                  : summary.returnRate >= 0
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : 'bg-red-100 text-red-700'
+              }`}>
+                <span className="material-symbols-outlined text-[14px]">
+                  {summary.returnRate == null ? 'remove' : summary.returnRate >= 0 ? 'trending_up' : 'trending_down'}
+                </span>
+                일일 {fmtPct(summary.returnRate)}
               </span>
               <span className="bg-surface-container text-on-surface-variant text-xs font-semibold px-3 py-1 rounded-full">
-                누적 {fmtPct(summary.cumulativeReturn)}
+                누적 {fmtPct(summary.returnRate)}
               </span>
             </div>
           </div>
 
-          {/* 전략 태그 + 메모 (시뮬레이터에서 입력한 내용 — 읽기 전용) */}
+          {/* 전략 태그 + 메모 */}
           <div className="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant/30 p-6">
             <h3 className="text-[16px] font-bold uppercase tracking-widest text-on-surface-variant mb-3 flex items-center gap-2">
               <span className="material-symbols-outlined text-[16px]">label</span>
@@ -211,14 +258,10 @@ export function SimulatorCalendar() {
                 Day {selectedDay} 기록
               </span>
             </h3>
-
-            {journal.tags.length > 0 ? (
+            {(selectedAlloc?.tags ?? []).length > 0 ? (
               <div className="flex flex-wrap gap-2 mb-5">
-                {journal.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="text-xs font-bold px-3 py-1.5 rounded-xl border bg-[#1A237E]/10 text-[#1A237E] border-[#1A237E]/30"
-                  >
+                {(selectedAlloc!.tags).map((tag: string) => (
+                  <span key={tag} className="text-xs font-bold px-3 py-1.5 rounded-xl border bg-[#1A237E]/10 text-[#1A237E] border-[#1A237E]/30">
                     {tag}
                   </span>
                 ))}
@@ -228,16 +271,12 @@ export function SimulatorCalendar() {
                 선택된 태그 없음
               </div>
             )}
-
             <div className="bg-surface-container rounded-xl p-4 border-l-4 border-[#1A237E]">
-              <span
-                className="material-symbols-outlined text-on-surface-variant/60 mb-1 block"
-                style={{ fontVariationSettings: '"FILL" 1' }}
-              >
+              <span className="material-symbols-outlined text-on-surface-variant/60 mb-1 block" style={{ fontVariationSettings: '"FILL" 1' }}>
                 format_quote
               </span>
-              {journal.memo ? (
-                <p className="text-sm text-on-surface-variant italic leading-relaxed">{journal.memo}</p>
+              {selectedAlloc?.memo ? (
+                <p className="text-sm text-on-surface-variant italic leading-relaxed">{selectedAlloc.memo}</p>
               ) : (
                 <p className="text-sm text-on-surface-variant/60 italic leading-relaxed">메모를 작성하지 않았습니다.</p>
               )}
@@ -253,135 +292,104 @@ export function SimulatorCalendar() {
               <span className="material-symbols-outlined text-[16px]">pie_chart</span>
               자산 배분 변화
             </h3>
-            <div className="flex flex-col gap-6">
-              {/* 도넛 비교 (가로 가운데 정렬) */}
-              <div className="flex items-center justify-center gap-4 flex-wrap">
-                <DonutFromAllocation
-                  rows={ALLOCATIONS_DAY3.map((r) => ({ ratio: r.start, color: r.color }))}
-                  label="시작"
-                />
-                <span className="material-symbols-outlined text-outline-variant text-2xl">arrow_forward</span>
-                <DonutFromAllocation
-                  rows={ALLOCATIONS_DAY3.map((r) => ({ ratio: r.end, color: r.color }))}
-                  label="종료"
-                  emphasis
-                />
+            {!selectedAlloc ? (
+              <div className="text-center text-on-surface-variant py-8">
+                <span className="material-symbols-outlined text-4xl mb-2 block opacity-40">lock</span>
+                <p className="text-sm">이 날의 배분 기록이 없습니다.</p>
               </div>
+            ) : (
+              <div className="flex flex-col gap-6">
+                {/* 도넛 비교 */}
+                <div className="flex items-center justify-center gap-4 flex-wrap">
+                  {selectedDay > 1 && prevAlloc ? (
+                    <>
+                      <DonutFromAllocation
+                        rows={allocRows.map((r) => ({ ratio: r.start, color: r.color }))}
+                        label="시작"
+                      />
+                      <span className="material-symbols-outlined text-outline-variant text-2xl">arrow_forward</span>
+                    </>
+                  ) : null}
+                  <DonutFromAllocation
+                    rows={allocRows.map((r) => ({ ratio: r.end, color: r.color }))}
+                    label="종료"
+                    emphasis
+                  />
+                </div>
 
-              {/* 변화 테이블 — 풀폭, 스크롤 없음 */}
-              <table className="w-full text-sm table-fixed">
-                <thead>
-                  <tr className="border-b border-outline-variant/30 text-on-surface-variant text-xs">
-                    <th className="pb-2 text-left font-semibold">자산군</th>
-                    <th className="pb-2 text-right font-semibold w-14">시작</th>
-                    <th className="pb-2 text-right font-semibold w-14">종료</th>
-                    <th className="pb-2 text-right font-semibold w-16">변화</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-outline-variant/20 text-on-surface">
-                  {ALLOCATIONS_DAY3.map((r) => {
-                    const delta = r.end - r.start;
-                    return (
-                      <tr key={r.asset}>
-                        <td className="py-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: r.color }} />
-                            <span className="text-sm font-medium truncate">{r.asset}</span>
-                          </div>
-                        </td>
-                        <td className="py-2 text-right text-sm tabular-nums">{r.start}%</td>
-                        <td className="py-2 text-right text-sm font-semibold tabular-nums">{r.end}%</td>
-                        <td
-                          className={`py-2 text-right text-sm font-bold tabular-nums ${
-                            delta > 0 ? 'text-emerald-700' : delta < 0 ? 'text-red-700' : 'text-on-surface-variant'
-                          }`}
-                        >
-                          {delta > 0 ? '+' : ''}
-                          {delta}%
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                {/* 변화 테이블 */}
+                <table className="w-full text-sm table-fixed">
+                  <thead>
+                    <tr className="border-b border-outline-variant/30 text-on-surface-variant text-xs">
+                      <th className="pb-2 text-left font-semibold">자산군</th>
+                      {selectedDay > 1 && prevAlloc && <th className="pb-2 text-right font-semibold w-14">시작</th>}
+                      <th className="pb-2 text-right font-semibold w-14">종료</th>
+                      {selectedDay > 1 && prevAlloc && <th className="pb-2 text-right font-semibold w-16">변화</th>}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-outline-variant/20 text-on-surface">
+                    {allocRows
+                      .map((r) => {
+                        const delta = r.end - r.start;
+                        return (
+                          <tr key={r.asset}>
+                            <td className="py-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: r.color }} />
+                                <span className="text-sm font-medium truncate">{r.label}</span>
+                              </div>
+                            </td>
+                            {selectedDay > 1 && prevAlloc && (
+                              <td className="py-2 text-right text-sm tabular-nums">{r.start}%</td>
+                            )}
+                            <td className="py-2 text-right text-sm font-semibold tabular-nums">{r.end}%</td>
+                            {selectedDay > 1 && prevAlloc && (
+                              <td className={`py-2 text-right text-sm font-bold tabular-nums ${delta > 0 ? 'text-emerald-700' : delta < 0 ? 'text-red-700' : 'text-on-surface-variant'}`}>
+                                {delta > 0 ? '+' : ''}{delta}%
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
-          {/* 자동 거래 내역 */}
-          <div className="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant/30 overflow-hidden">
-            <div className="p-5 border-b border-outline-variant/30 flex justify-between items-center bg-surface-container-low">
-              <h3 className="text-[16px] font-bold uppercase tracking-widest text-on-surface-variant flex items-center gap-2">
-                <span className="material-symbols-outlined text-[16px]">receipt_long</span>
-                거래 내역
-              </h3>
-              <span className="bg-[#1A237E]/10 text-[#1A237E] text-xs font-bold px-2 py-1 rounded-md">
-                {TRADES_DAY3.length}건의 거래
-              </span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm whitespace-nowrap">
-                <thead className="bg-surface-container-lowest">
-                  <tr className="text-on-surface-variant text-xs border-b border-outline-variant/30">
-                    <th className="px-5 py-3 text-left font-semibold">자산</th>
-                    <th className="px-5 py-3 text-left font-semibold">종류</th>
-                    <th className="px-5 py-3 text-right font-semibold">가격</th>
-                    <th className="px-5 py-3 text-right font-semibold">수량</th>
-                    <th className="px-5 py-3 text-right font-semibold">총액</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-outline-variant/20 text-on-surface">
-                  {TRADES_DAY3.map((t, i) => {
-                    const total = t.price * t.quantity;
-                    return (
-                      <tr key={i} className="hover:bg-surface-container-low transition-colors">
-                        <td className="px-5 py-3 font-bold">{t.asset}</td>
-                        <td className="px-5 py-3">
-                          <span
-                            className={`text-xs px-2 py-0.5 rounded ${
-                              t.type === 'BUY' ? 'bg-red-500 text-white' : 'bg-blue-500 text-white'
-                            }`}
-                          >
-                            {t.type === 'BUY' ? '매수' : '매도'}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3 text-right">₩{t.price.toLocaleString()}</td>
-                        <td className="px-5 py-3 text-right">{t.quantity}</td>
-                        <td className="px-5 py-3 text-right font-semibold">₩{total.toLocaleString()}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+          {/* 그날 본 뉴스 */}
+          <div className="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant/30 p-6">
+            <h3 className="text-[16px] font-bold uppercase tracking-widest text-on-surface-variant mb-4 flex items-center gap-2">
+              <span className="material-symbols-outlined text-[16px]">newspaper</span>
+              Day {selectedDay}에 본 뉴스 {selectedNews.length}개
+            </h3>
+            {selectedNews.length === 0 ? (
+              <div className="text-center text-on-surface-variant/60 py-6 text-sm">이 날의 뉴스가 없습니다.</div>
+            ) : (
+              <div className="flex gap-3 overflow-x-auto pb-2 snap-x">
+                {selectedNews.map((n, i) => (
+                  <div
+                    key={i}
+                    className="min-w-[260px] max-w-[260px] bg-surface-container-low rounded-xl border border-outline-variant/30 p-4 snap-start hover:shadow-md transition-shadow cursor-pointer relative flex-shrink-0"
+                  >
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2 block">
+                      #{n.news_type}
+                    </span>
+                    <h4 className="font-bold text-on-surface text-sm mb-2 line-clamp-2 pr-12">{n.title}</h4>
+                    {n.description && (
+                      <p className="text-xs text-on-surface-variant line-clamp-2">{n.description}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        </div>
-      </section>
-
-      {/* 4. 그날 본 뉴스 */}
-      <section className="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant/30 p-6">
-        <h3 className="text-[16px] font-bold uppercase tracking-widest text-on-surface-variant mb-4 flex items-center gap-2">
-          <span className="material-symbols-outlined text-[16px]">newspaper</span>
-          Day {selectedDay}에 본 뉴스 {NEWS_DAY3.length}개
-        </h3>
-        <div className="flex gap-3 overflow-x-auto pb-2 snap-x">
-          {NEWS_DAY3.map((n, i) => (
-            <div
-              key={i}
-              className="min-w-[260px] max-w-[260px] bg-surface-container-low rounded-xl border border-outline-variant/30 p-4 snap-start hover:shadow-md transition-shadow cursor-pointer relative flex-shrink-0"
-            >
-              <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2 block">
-                #{n.topic}
-              </span>
-              <h4 className="font-bold text-on-surface text-sm mb-2 line-clamp-2 pr-12">{n.title}</h4>
-            </div>
-          ))}
         </div>
       </section>
     </div>
   );
 }
 
-// 도넛 (자산 비율 합산 100% 가정)
 function DonutFromAllocation({
   rows,
   label,

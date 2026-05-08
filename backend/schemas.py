@@ -73,3 +73,39 @@ class PortfolioResponse(BaseModel):
 class UserLevelResponse(BaseModel):
     success: bool
     data: Optional[dict] = None
+
+# 5. 게임 시뮬레이터 관련 스키마
+class GameStartRequest(BaseModel):
+    scenario_id: int
+
+class GameAllocateRequest(BaseModel):
+    allocations: dict        # {"bonds": 40, "gold": 20, ...}
+    tags: List[str] = []    # ["#태그1", "#태그2", ...]
+    memo: str = ""
+
+class DayPriceItem(BaseModel):
+    asset: str
+    prices: List[float]  # D1~D7 (미래는 null 대신 리스트 길이로 구분)
+
+class DayMacroItem(BaseModel):
+    day_index: int
+    cpi: float
+    interest_rate: float
+    fx_usdkrw: float
+    vix: float
+
+class DayNewsItem(BaseModel):
+    slot: int
+    title: str
+    description: str
+    news_type: str  # macro / bullish / bearish / trap / noise
+
+class DayAllocationItem(BaseModel):
+    day_index: int
+    allocations: dict
+    portfolio_value: Optional[float] = None
+    return_rate: Optional[float] = None
+
+class GameParticipationResponse(BaseModel):
+    success: bool
+    data: Optional[dict] = None

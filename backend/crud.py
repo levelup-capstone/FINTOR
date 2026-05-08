@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 import models, schemas
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
@@ -185,6 +186,92 @@ def cleanup_old_news_views(db: Session):
 # =====================================================================
 # 뉴스 삭제 (저장 후 3일이 지난 뉴스 데이터 삭제)
 # =====================================================================
+# =====================================================================
+# 게임 시뮬레이터
+# =====================================================================
+
+def get_scenario_by_id(db: Session, scenario_id: int):
+    return db.query(models.GameScenario).filter(models.GameScenario.id == scenario_id).first()
+
+def get_all_scenarios(db: Session):
+    return db.query(models.GameScenario).order_by(models.GameScenario.season).all()
+
+def get_prices_by_scenario(db: Session, scenario_id: int):
+    return db.query(models.GameDayPrice).filter(
+        models.GameDayPrice.scenario_id == scenario_id
+    ).order_by(models.GameDayPrice.day_index).all()
+
+def get_macros_by_scenario(db: Session, scenario_id: int):
+    return db.query(models.GameDayMacro).filter(
+        models.GameDayMacro.scenario_id == scenario_id
+    ).order_by(models.GameDayMacro.day_index).all()
+
+def get_news_by_scenario_and_day(db: Session, scenario_id: int, day_index: int):
+    return db.query(models.GameDayNews).filter(
+        models.GameDayNews.scenario_id == scenario_id,
+        models.GameDayNews.day_index == day_index,
+    ).order_by(models.GameDayNews.slot).all()
+
+def get_participation(db: Session, participation_id: int):
+    return db.query(models.GameParticipation).filter(
+        models.GameParticipation.id == participation_id
+    ).first()
+
+def get_active_participation(db: Session, user_id: int):
+    """유저의 진행 중(미완료) participation 반환"""
+    return db.query(models.GameParticipation).filter(
+        models.GameParticipation.user_id == user_id,
+        models.GameParticipation.is_finalized == False,
+    ).order_by(models.GameParticipation.created_at.desc()).first()
+
+def create_participation(db: Session, user_id: int, scenario_id: int, start_date, initial_cash: float = 10_000_000):
+    p = models.GameParticipation(
+        user_id      = user_id,
+        scenario_id  = scenario_id,
+        start_date   = start_date,
+        initial_cash = initial_cash,
+    )
+    db.add(p)
+    db.commit()
+    db.refresh(p)
+    return p
+
+def get_allocations_by_participation(db: Session, participation_id: int):
+    return db.query(models.GameAllocation).filter(
+        models.GameAllocation.participation_id == participation_id
+    ).order_by(models.GameAllocation.day_index).all()
+
+def get_allocation_by_day(db: Session, participation_id: int, day_index: int):
+    return db.query(models.GameAllocation).filter(
+        models.GameAllocation.participation_id == participation_id,
+        models.GameAllocation.day_index == day_index,
+    ).first()
+
+def create_allocation(db: Session, participation_id: int, day_index: int,
+                      allocations: dict, portfolio_value: float, return_rate: float,
+                      tags: Optional[list] = None, memo: Optional[str] = None):
+    alloc = models.GameAllocation(
+        participation_id = participation_id,
+        day_index        = day_index,
+        allocations      = allocations,
+        portfolio_value  = portfolio_value,
+        return_rate      = return_rate,
+        tags             = tags or [],
+        memo             = memo or "",
+    )
+    db.add(alloc)
+    db.commit()
+    db.refresh(alloc)
+    return alloc
+
+def finalize_participation(db: Session, participation_id: int):
+    p = get_participation(db, participation_id)
+    if p:
+        p.is_finalized = True
+        db.commit()
+    return p
+
+
 def delete_old_news(db: Session, days_to_keep: int = 3) -> int:
     """
     저장된 지 특정 일수(days_to_keep)가 지난 과거 뉴스 데이터를 DB에서 삭제합니다.
