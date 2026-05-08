@@ -5,6 +5,9 @@ import { Login } from "./pages/Login";
 import { KakaoCallback } from "./pages/KakaoCallback";
 import { Survey } from "./pages/Survey";
 import { News } from "./pages/News";
+import { SimulatorOverview } from "./pages/SimulatorOverview";
+import { SimulatorDashboard } from "./pages/SimulatorDashboard";
+import { SimulatorCalendar } from "./pages/SimulatorCalendar";
 
 export const router = createBrowserRouter([
   {
@@ -25,6 +28,9 @@ export const router = createBrowserRouter([
     children: [
       { index: true, Component: Dashboard },
       { path: "news", Component: News },
+      { path: "simulator", Component: SimulatorOverview },
+      { path: "simulator/season", Component: SimulatorDashboard },
+      { path: "simulator/season/calendar", Component: SimulatorCalendar },
     ],
   },
 ]);

@@ -8,7 +8,7 @@ export function Header() {
 
   const navItems = [
     { label: '대시보드', to: '/dashboard' },
-    { label: '기록', to: '/dashboard/record' },
+    { label: '시뮬레이터', to: '/dashboard/simulator' },
     { label: '퀴즈', to: '/dashboard/quiz' },
     { label: '뉴스', to: '/dashboard/news' },
   ];
