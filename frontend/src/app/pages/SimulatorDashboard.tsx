@@ -349,7 +349,7 @@ export function SimulatorDashboard() {
                 <div className="flex items-end justify-between gap-2">
                   <span className="text-base md:text-lg font-black tracking-tight text-on-surface">{a.todayPrice.toFixed(2)}</span>
                   <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${isUp2 ? 'bg-emerald-100 text-emerald-700' : isDown ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}`}>
-                    {isUp2 ? '+' : ''}{a.changePct.toFixed(1)}%
+                    {isUp2 ? '+' : ''}{a.changePct.toFixed(2)}%
                   </span>
                 </div>
                 <div className="h-12 w-full mt-1">
@@ -802,8 +802,11 @@ function MacroDetailModal({ macro, todayIdx, scenarioStage, onClose }: {
   const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' ');
   const currentValue = history[todayIdx] ?? history[history.length - 1] ?? 0;
   const startValue = history[0] ?? 1;
+  const cumulDelta = currentValue - startValue;
   const cumulPct = ((currentValue - startValue) / startValue) * 100;
-  const isUp = cumulPct > 0;
+  const isVix = macro.label === 'VIX';
+  const isFx = macro.label === '환율 (USD/KRW)';
+  const isUp = cumulDelta > 0;
   const yTicks = Array.from({ length: 5 }, (_, i) => { const t = yMin + (yRange * i) / 4; return { value: t, y: padY + (1 - (t - yMin) / yRange) * innerH }; });
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
@@ -822,8 +825,8 @@ function MacroDetailModal({ macro, todayIdx, scenarioStage, onClose }: {
         </div>
         <div className="px-6 pt-5 flex items-end gap-3">
           <span className="text-4xl font-black tracking-tight text-on-surface">{macro.formatValue(currentValue)}</span>
-          <span className={`text-sm font-bold px-2 py-1 rounded mb-1 ${isUp ? 'bg-red-100 text-red-700' : cumulPct < 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
-            {isUp ? '+' : ''}{cumulPct.toFixed(2)}%
+          <span className={`text-sm font-bold px-2 py-1 rounded mb-1 ${isUp ? 'bg-red-100 text-red-700' : cumulDelta < 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+            {isUp ? '+' : ''}{isVix ? cumulDelta.toFixed(1) : isFx ? `${cumulPct.toFixed(2)}%` : macro.label === 'CPI' ? `${cumulDelta.toFixed(1)}%` : `${cumulDelta.toFixed(2)}%`}
           </span>
           <span className="text-xs text-on-surface-variant mb-2">시즌 시작 대비</span>
         </div>
@@ -848,14 +851,21 @@ function MacroDetailModal({ macro, todayIdx, scenarioStage, onClose }: {
             {Array.from({ length: TOTAL_DAYS }, (_, i) => {
               const v = history[i]; const prev = history[i - 1];
               const dailyDelta = v != null && prev != null ? v - prev : null;
+              const dailyPct = isFx && v != null && prev != null && prev !== 0 ? ((v - prev) / prev) * 100 : null;
               const isToday = i === todayIdx; const isFuture = v == null;
+              const deltaNum = isFx ? dailyPct : dailyDelta;
+              const deltaStr = isFx && dailyPct != null
+                ? `${dailyPct > 0 ? '+' : ''}${dailyPct.toFixed(2)}%`
+                : dailyDelta != null
+                  ? `${dailyDelta > 0 ? '+' : ''}${macro.label === 'CPI' ? dailyDelta.toFixed(1) : dailyDelta.toFixed(2)}${isVix ? '' : '%'}`
+                  : null;
               return (
                 <div key={i} className={`flex flex-col items-center gap-1 p-2 rounded-lg border ${isToday ? 'border-[#1A237E] bg-[#1A237E]/5' : isFuture ? 'border-outline-variant/20 bg-surface-container-low/50 opacity-50' : 'border-outline-variant/30'}`}>
                   <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">D{i + 1}</span>
                   <span className="text-sm font-black tracking-tight text-on-surface">{isFuture ? '—' : macro.formatValue(v)}</span>
-                  {dailyDelta != null && !isFuture && (
-                    <span className={`text-[10px] font-bold ${dailyDelta > 0 ? 'text-red-700' : dailyDelta < 0 ? 'text-emerald-700' : 'text-slate-500'}`}>
-                      {dailyDelta > 0 ? '+' : ''}{dailyDelta.toFixed(2)}
+                  {deltaStr != null && !isFuture && (
+                    <span className={`text-[10px] font-bold ${deltaNum != null && deltaNum > 0 ? 'text-red-700' : deltaNum != null && deltaNum < 0 ? 'text-emerald-700' : 'text-slate-500'}`}>
+                      {deltaStr}
                     </span>
                   )}
                 </div>

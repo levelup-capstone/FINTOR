@@ -1140,9 +1140,14 @@ def get_participation(
         for a in alloc_rows
     ]
 
-    # 현재 총 자산: 가장 최근 allocation의 portfolio_value, 없으면 initial_cash
+    # 현재 총 자산: 가장 최근 allocation의 비중을 오늘 가격으로 재계산
     latest_alloc = alloc_rows[-1] if alloc_rows else None
-    current_value = latest_alloc.portfolio_value if latest_alloc else p.initial_cash
+    if latest_alloc:
+        current_value = _calc_portfolio_value(
+            p.initial_cash, latest_alloc.allocations, prices_map, today_idx
+        )
+    else:
+        current_value = p.initial_cash
     total_return = round((current_value - p.initial_cash) / p.initial_cash * 100, 2)
 
     return {

@@ -18,3 +18,6 @@ build/
 # OS Files
 .DS_Store
 Thumbs.db
+
+# Claude
+CLAUDE.md
