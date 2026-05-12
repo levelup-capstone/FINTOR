@@ -69,6 +69,7 @@ export function SimulatorDashboard() {
   const [selectedMacroIdx, setSelectedMacroIdx] = useState<number | null>(null);
   const [selectedSignalIdx, setSelectedSignalIdx] = useState<number | null>(null);
   const [selectedNewsDay, setSelectedNewsDay] = useState<number>(1);
+  const [rebalancingOpen, setRebalancingOpen] = useState(false);
 
   useEffect(() => {
     const pid = localStorage.getItem('participationId');
@@ -121,6 +122,14 @@ export function SimulatorDashboard() {
     const journalKey = `fintor_journal_d${pData.today_index}`;
     try { localStorage.setItem(journalKey, JSON.stringify({ tags: activeTags, memo })); } catch {}
   }, [activeTags, memo, pData]);
+
+  useEffect(() => {
+    const anyOpen = rebalancingOpen || selectedAsset !== null || selectedMacroIdx !== null || selectedSignalIdx !== null;
+    if (!anyOpen) return;
+    const original = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = original; };
+  }, [rebalancingOpen, selectedAsset, selectedMacroIdx, selectedSignalIdx]);
 
   if (loading) {
     return (
@@ -209,6 +218,10 @@ export function SimulatorDashboard() {
   const leftoverRatio = Math.max(0, 100 - totalRatio);
   const leftoverWon = Math.round((leftoverRatio * equity) / 100);
 
+  const confirmedTotal = Math.round(Object.values(confirmedAlloc).reduce((s, v) => s + v, 0) * 100) / 100;
+  const confirmedLeftoverRatio = Math.max(0, 100 - confirmedTotal);
+  const confirmedLeftoverWon = Math.round((confirmedLeftoverRatio * equity) / 100);
+
   const updateRatio = (key: string, value: number) => {
     setAllocation((prev) => ({ ...prev, [key]: Math.max(0, Math.min(100, value)) }));
   };
@@ -217,7 +230,24 @@ export function SimulatorDashboard() {
     setActiveTags((prev) => prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]);
   };
 
+  const isLastDay = today_index === TOTAL_DAYS;
+
   const handleConfirm = async () => {
+    if (isLastDay) {
+      // Day 7: 미확정이면 finalize 트리거 후 결과 페이지로 이동
+      if (!todayConfirmed) {
+        if (!totalRatioOk) return;
+        const pid = Number(localStorage.getItem('participationId'));
+        const result = await confirmAllocation(pid, allocation, activeTags, memo);
+        if (!result) return;
+        setConfirmedAlloc({ ...allocation });
+        setTodayConfirmed(true);
+        setEquity(Math.floor(result.portfolio_value));
+        setTotalReturn(result.return_rate);
+      }
+      navigate('/dashboard/simulator/season/calendar');
+      return;
+    }
     if (!totalRatioOk || todayConfirmed) return;
     const pid = Number(localStorage.getItem('participationId'));
     const result = await confirmAllocation(pid, allocation, activeTags, memo);
@@ -226,6 +256,7 @@ export function SimulatorDashboard() {
       setTodayConfirmed(true);
       setEquity(Math.floor(result.portfolio_value));
       setTotalReturn(result.return_rate);
+      setRebalancingOpen(false);
     }
   };
 
@@ -234,22 +265,38 @@ export function SimulatorDashboard() {
     return a?.portfolio_value ?? null;
   });
   const knownEquity = equityHistory.filter((v): v is number => v !== null);
-  const eqMin = knownEquity.length > 0 ? Math.min(...knownEquity, initial_cash) : initial_cash;
-  const eqMax = knownEquity.length > 0 ? Math.max(...knownEquity, initial_cash) : initial_cash;
-  const eqRange = eqMax - eqMin || 1;
+  // 오늘 라이브 평가액(equity)이 history에 없으면 포함시킴 (오늘 미확정 케이스)
+  const todayInHistory = equityHistory[todayIdx0] != null;
+  const allValues = [initial_cash, ...knownEquity, ...(todayInHistory ? [] : [equity])];
+  const rawMin = Math.min(...allValues);
+  const rawMax = Math.max(...allValues);
+  // 데이터가 평평해도 최소 범위 확보 (initial_cash의 4%) + 위아래 20% padding
+  const center = (rawMin + rawMax) / 2;
+  const halfEffective = Math.max((rawMax - rawMin) / 2, initial_cash * 0.02);
+  const yPad = halfEffective * 0.4;
+  const yMin = center - halfEffective - yPad;
+  const yMax = center + halfEffective + yPad;
+  const yRange = yMax - yMin;
+  const toY = (v: number) => 100 - ((v - yMin) / yRange) * 100;
 
   const equityPoints = equityHistory
     .map((v, i) => {
       if (v === null) return null;
       const x = (i / (TOTAL_DAYS - 1)) * 100;
-      const y = 100 - ((v - eqMin) / eqRange) * 100;
-      return { x, y, v };
+      return { x, y: toY(v), v };
     })
     .filter((p): p is { x: number; y: number; v: number } => p !== null);
 
-  const equityPath = equityPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' ');
   const todayEquityX = (todayIdx0 / (TOTAL_DAYS - 1)) * 100;
-  const todayEquityY = equityPoints.find((p) => Math.abs(p.x - todayEquityX) < 0.1)?.y ?? 50;
+  // 오늘 미확정이면 라이브 equity로 점 찍어서 path 연장
+  const equityPointsForPath = todayInHistory
+    ? equityPoints
+    : [...equityPoints, { x: todayEquityX, y: toY(equity), v: equity }];
+  const equityPath = equityPointsForPath
+    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`)
+    .join(' ');
+  const todayEquityY = toY(equity);
+  const initialCashY = toY(initial_cash);
 
   const isUp = totalReturn >= 0;
   const progressPct = Math.round((today_index / TOTAL_DAYS) * 100);
@@ -415,9 +462,9 @@ export function SimulatorDashboard() {
                 className="p-4 rounded-xl border border-outline-variant/30 hover:bg-surface-container-low hover:border-[#1A237E]/30 transition-colors cursor-pointer group text-left w-full flex flex-col"
               >
                 <div className="flex items-center justify-between gap-2 mb-2">
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold tracking-widest bg-surface-container-high text-on-surface-variant">#{s.news_type}</span>
+                  <span className="px-2 py-0.5 rounded text-[12px] font-bold tracking-widest bg-surface-container-high text-on-surface-variant">#{s.news_type}</span>
                 </div>
-                <h3 className="font-bold text-on-surface text-sm group-hover:text-[#1A237E] transition-colors line-clamp-3">{s.title}</h3>
+                <h3 className="font-bold text-on-surface text-[20px] group-hover:text-[#1A237E] transition-colors line-clamp-3">{s.title}</h3>
               </button>
             ))}
           </div>
@@ -432,8 +479,8 @@ export function SimulatorDashboard() {
             <h2 className="text-xl font-black tracking-tight text-on-surface mb-4">자산 추이</h2>
             <div className="h-48 w-full relative mt-4">
               <div className="absolute inset-0 border-b border-l border-outline-variant/30" />
-              <div className="absolute top-[60%] w-full border-t border-dashed border-outline-variant">
-                <span className="absolute -top-4 right-0 text-[10px] font-semibold text-on-surface-variant">₩{(initial_cash / 1_000_000).toFixed(0)}M</span>
+              <div className="absolute w-full border-t border-dashed border-outline-variant" style={{ top: `${initialCashY}%` }}>
+                <span className="absolute -top-4 right-0 text-[10px] font-semibold text-on-surface-variant">₩{(initial_cash / 1_000_000).toFixed(0)}M (시작)</span>
               </div>
               <svg className="w-full h-full absolute inset-0" preserveAspectRatio="none" viewBox="0 0 100 100">
                 {equityPath && <path d={equityPath} fill="none" stroke="#1A237E" strokeWidth="2" vectorEffect="non-scaling-stroke" />}
@@ -449,19 +496,36 @@ export function SimulatorDashboard() {
           </section>
         </div>
 
-        {/* 우측: 포트폴리오 리밸런싱 */}
+        {/* 우측: 포트폴리오 리밸런싱 요약 (클릭 시 모달) */}
         <div className="lg:col-span-2 flex flex-col gap-6">
-          <section className="bg-surface-container-lowest rounded-2xl p-6 shadow-sm border border-outline-variant/30">
-            <h2 className="text-xl font-black tracking-tight text-on-surface mb-6 flex items-center gap-2">
-              <span className="material-symbols-outlined">pie_chart</span>
-              포트폴리오 리밸런싱
-            </h2>
-            <div className="flex flex-wrap xl:flex-nowrap items-center justify-around gap-4 sm:gap-6 mb-8 bg-surface-container-low p-4 sm:p-6 rounded-xl border border-outline-variant/30 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setRebalancingOpen(true)}
+            className="bg-surface-container-lowest rounded-2xl p-6 shadow-sm border border-outline-variant/30 hover:border-[#1A237E]/60 hover:shadow-md transition-all text-left cursor-pointer group"
+          >
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+              <h2 className="text-xl font-black tracking-tight text-on-surface flex items-center gap-2">
+                <span className="material-symbols-outlined">pie_chart</span>
+                포트폴리오 리밸런싱
+              </h2>
+              {todayConfirmed && !isLastDay ? (
+                <span className="bg-emerald-100 text-emerald-700 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[14px]">check_circle</span>
+                  오늘 매매 확정 완료
+                </span>
+              ) : (
+                <span className="bg-[#1A237E]/10 text-[#1A237E] text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1 group-hover:bg-[#1A237E] group-hover:text-white transition-colors">
+                  {isLastDay ? '결과 보기' : '리밸런싱하기'}
+                  <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center justify-around gap-4 sm:gap-6 bg-surface-container-low p-4 sm:p-6 rounded-xl border border-outline-variant/30">
               <div className="flex flex-col items-center gap-2 flex-shrink-0">
                 <span className="font-bold text-on-surface-variant text-sm">현재 배분</span>
                 <DonutPlaceholder allocation={confirmedAlloc} assets={scenario.assets} />
               </div>
-              <div className="flex flex-col items-center gap-2 order-first xl:order-none w-full xl:w-auto xl:flex-1 xl:min-w-0">
+              <div className="flex flex-col items-center gap-2 flex-1 min-w-0">
                 <div className="text-center">
                   <span className="block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">현재 총 자산</span>
                   <span className="text-2xl md:text-3xl font-black tracking-tight text-on-surface whitespace-nowrap">₩{equity.toLocaleString()}</span>
@@ -469,21 +533,64 @@ export function SimulatorDashboard() {
                 <div className="text-center">
                   <span className="block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">남은 현금 (원화)</span>
                   <span className="text-base font-bold tracking-tight text-on-surface whitespace-nowrap">
-                    {leftoverRatio % 1 === 0 ? leftoverRatio : leftoverRatio.toFixed(2)}% · ₩{leftoverWon.toLocaleString()}
+                    {confirmedLeftoverRatio % 1 === 0 ? confirmedLeftoverRatio : confirmedLeftoverRatio.toFixed(2)}% · ₩{confirmedLeftoverWon.toLocaleString()}
                   </span>
                 </div>
-                {!totalRatioOk && (
-                  <span className="text-xs font-semibold px-2 py-1 rounded-md bg-red-100 text-red-700">합계 초과: {totalRatio}%</span>
-                )}
-              </div>
-              <div className="flex flex-col items-center gap-2 flex-shrink-0">
-                <span className="font-bold text-[#1A237E] text-sm">변경 후 배분</span>
-                <DonutPlaceholder allocation={allocation} assets={scenario.assets} />
               </div>
             </div>
+          </button>
+        </div>
+      </div>
 
-            <div className="grid grid-cols-1 gap-y-4">
-              {scenario.assets.map((key) => {
+      {rebalancingOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 pb-24 md:pb-4" onClick={() => setRebalancingOpen(false)}>
+          <div
+            className="bg-surface-container-lowest rounded-2xl shadow-xl w-full max-w-4xl max-h-[80vh] md:max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 z-10 bg-surface-container-lowest flex items-center justify-between p-6 border-b border-outline-variant/30">
+              <h2 className="text-xl font-black tracking-tight text-on-surface flex items-center gap-2">
+                <span className="material-symbols-outlined">pie_chart</span>
+                포트폴리오 리밸런싱
+              </h2>
+              <button
+                onClick={() => setRebalancingOpen(false)}
+                className="p-2 rounded-full hover:bg-surface-container-low transition-colors"
+                aria-label="닫기"
+              >
+                <span className="material-symbols-outlined text-on-surface-variant">close</span>
+              </button>
+            </div>
+
+            <section className="p-6">
+              <div className="flex flex-wrap xl:flex-nowrap items-center justify-around gap-4 sm:gap-6 mb-8 bg-surface-container-low p-4 sm:p-6 rounded-xl border border-outline-variant/30 overflow-hidden">
+                <div className="flex flex-col items-center gap-2 flex-shrink-0">
+                  <span className="font-bold text-on-surface-variant text-sm">현재 배분</span>
+                  <DonutPlaceholder allocation={confirmedAlloc} assets={scenario.assets} />
+                </div>
+                <div className="flex flex-col items-center gap-2 order-first xl:order-none w-full xl:w-auto xl:flex-1 xl:min-w-0">
+                  <div className="text-center">
+                    <span className="block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">현재 총 자산</span>
+                    <span className="text-2xl md:text-3xl font-black tracking-tight text-on-surface whitespace-nowrap">₩{equity.toLocaleString()}</span>
+                  </div>
+                  <div className="text-center">
+                    <span className="block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">남은 현금 (원화)</span>
+                    <span className="text-base font-bold tracking-tight text-on-surface whitespace-nowrap">
+                      {leftoverRatio % 1 === 0 ? leftoverRatio : leftoverRatio.toFixed(2)}% · ₩{leftoverWon.toLocaleString()}
+                    </span>
+                  </div>
+                  {!totalRatioOk && (
+                    <span className="text-xs font-semibold px-2 py-1 rounded-md bg-red-100 text-red-700">합계 초과: {totalRatio}%</span>
+                  )}
+                </div>
+                <div className="flex flex-col items-center gap-2 flex-shrink-0">
+                  <span className="font-bold text-[#1A237E] text-sm">변경 후 배분</span>
+                  <DonutPlaceholder allocation={allocation} assets={scenario.assets} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-y-4">
+                {scenario.assets.map((key) => {
                 const meta = ASSET_META[key] ?? { label: key, color: '#94a3b8', accent: '' };
                 const ratio = allocation[key] ?? 0;
                 const currentRatio = confirmedAlloc[key] ?? 0;
@@ -491,13 +598,15 @@ export function SimulatorDashboard() {
                 const delta = ratio - currentRatio;
                 const ratioDisplay = Number.isInteger(ratio) ? ratio : Number(ratio.toFixed(2));
                 const history = prices[key] ?? [];
-                const d1Price = history[0] ?? 1;
-                const todayPrice = history[todayIdx0] ?? d1Price;
-                const priceChangePct = ((todayPrice - d1Price) / d1Price) * 100;
+                const todayPrice = history[todayIdx0] ?? 1;
+                const yesterdayPrice = todayIdx0 > 0 ? (history[todayIdx0 - 1] ?? todayPrice) : todayPrice;
+                const dailyPct = yesterdayPrice !== 0 ? ((todayPrice - yesterdayPrice) / yesterdayPrice) * 100 : 0;
                 const tradeWon = Math.round((Math.abs(delta) * equity) / 100);
                 const isSell = delta < 0;
                 const isBuy = delta > 0;
-                const realizedPL = isSell ? Math.round(tradeWon * ((todayPrice - d1Price) / todayPrice)) : 0;
+                const realizedPL = isSell && todayPrice !== 0 && todayIdx0 > 0
+                  ? Math.round(tradeWon * (todayPrice - yesterdayPrice) / todayPrice)
+                  : 0;
                 const setRatio = (next: number) => updateRatio(key, next);
                 const stepRatio = (d: number) => updateRatio(key, Math.max(0, Math.min(100, Math.round(ratio) + d)));
                 const setWon = (nextWon: number) => setRatio((Math.max(0, Math.min(equity, nextWon || 0)) / equity) * 100);
@@ -559,10 +668,10 @@ export function SimulatorDashboard() {
                           <span className="material-symbols-outlined text-[14px]">{isBuy ? 'arrow_upward' : 'arrow_downward'}</span>
                           {isBuy ? '매수' : '매도'} {Math.abs(delta)}% · ₩{tradeWon.toLocaleString()}
                         </span>
-                        {isSell && (
+                        {isSell && todayIdx0 > 0 && (
                           <span className={`inline-flex items-center gap-1 text-xs font-bold ${realizedPL > 0 ? 'text-emerald-700' : realizedPL < 0 ? 'text-red-700' : 'text-on-surface-variant'}`}>
                             <span className="material-symbols-outlined text-[14px]">{realizedPL > 0 ? 'trending_up' : realizedPL < 0 ? 'trending_down' : 'remove'}</span>
-                            실현 {realizedPL > 0 ? '+' : ''}{priceChangePct.toFixed(2)}% ({realizedPL > 0 ? '+' : ''}₩{realizedPL.toLocaleString()})
+                            실현 {dailyPct > 0 ? '+' : ''}{dailyPct.toFixed(2)}% ({realizedPL > 0 ? '+' : ''}₩{realizedPL.toLocaleString()})
                           </span>
                         )}
                       </div>
@@ -621,11 +730,11 @@ export function SimulatorDashboard() {
           <div className="flex flex-col items-center mt-4">
             <div className="flex gap-3 w-full md:w-auto">
               <button
-                disabled={!totalRatioOk || todayConfirmed}
+                disabled={isLastDay ? (!todayConfirmed && !totalRatioOk) : (!totalRatioOk || todayConfirmed)}
                 onClick={handleConfirm}
                 className="flex-1 md:flex-none bg-[#1A237E] text-white font-bold text-lg px-8 py-4 rounded-xl shadow-sm hover:shadow-md hover:bg-[#1A237E]/90 transition-all transform hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
               >
-                {todayConfirmed ? '오늘 매매 확정 완료' : '오늘의 매매 확정하기'}
+                {isLastDay ? '결과 보기' : (todayConfirmed ? '오늘 매매 확정 완료' : '오늘의 매매 확정하기')}
               </button>
               {/* [DEV ONLY] 다음 일차 강제 이동 버튼 - 테스트 전용, 배포 전 제거 필요 */}
               <button
@@ -657,11 +766,12 @@ export function SimulatorDashboard() {
             </div>
             <span className="text-on-surface-variant text-xs mt-3 flex items-center gap-1">
               <span className="material-symbols-outlined text-[14px]">info</span>
-              오늘 1회 가능 · 자정 자동 정산
+              {isLastDay ? '마지막 날 · 클릭 시 시즌 종료 후 결과 페이지로 이동' : '오늘 1회 가능 · 자정 자동 정산'}
             </span>
           </div>
+          </div>
         </div>
-      </div>
+      )}
 
       {selectedAsset && (
         <AssetDetailModal
@@ -727,8 +837,8 @@ function AssetDetailModal({ assetKey: _assetKey, label, color, history, todayIdx
   const isUp = cumulPct > 0;
   const yTicks = Array.from({ length: 5 }, (_, i) => { const t = yMin + (yRange * i) / 4; return { value: t, y: padY + (1 - (t - yMin) / yRange) * innerH }; });
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-      <div className="bg-surface-container-lowest rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 pb-24 md:pb-4" onClick={onClose}>
+      <div className="bg-surface-container-lowest rounded-2xl shadow-xl w-full max-w-3xl max-h-[80vh] md:max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between p-6 border-b border-outline-variant/30">
           <div className="flex items-center gap-3">
             <span className="w-4 h-4 rounded-full" style={{ backgroundColor: color }} />
@@ -809,8 +919,8 @@ function MacroDetailModal({ macro, todayIdx, scenarioStage, onClose }: {
   const isUp = cumulDelta > 0;
   const yTicks = Array.from({ length: 5 }, (_, i) => { const t = yMin + (yRange * i) / 4; return { value: t, y: padY + (1 - (t - yMin) / yRange) * innerH }; });
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-      <div className="bg-surface-container-lowest rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 pb-24 md:pb-4" onClick={onClose}>
+      <div className="bg-surface-container-lowest rounded-2xl shadow-xl w-full max-w-3xl max-h-[80vh] md:max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between p-6 border-b border-outline-variant/30">
           <div className="flex items-center gap-3">
             <span className="w-4 h-4 rounded-full" style={{ backgroundColor: macro.stroke }} />
@@ -880,8 +990,8 @@ function MacroDetailModal({ macro, todayIdx, scenarioStage, onClose }: {
 
 function NewsDetailModal({ signal, onClose }: { signal: DayNews; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-      <div className="bg-surface-container-lowest rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 pb-24 md:pb-4" onClick={onClose}>
+      <div className="bg-surface-container-lowest rounded-2xl shadow-xl w-full max-w-2xl max-h-[80vh] md:max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between p-6 border-b border-outline-variant/30">
           <div className="flex items-center gap-3 flex-wrap">
             <span className="px-3 py-1 rounded text-xs font-bold tracking-widest bg-surface-container-high text-on-surface-variant">#{signal.news_type}</span>

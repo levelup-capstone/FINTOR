@@ -175,7 +175,7 @@ export function Survey() {
     setIsSubmitting(true);
     try {
       const token = localStorage.getItem('accessToken');
-      const res = await fetch('http://localhost:8000/api/survey', {
+      const res = await fetch('/api/survey', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

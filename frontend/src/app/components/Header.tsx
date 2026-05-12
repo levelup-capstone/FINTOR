@@ -41,7 +41,7 @@ export function Header() {
   // 로그아웃: 백엔드 호출 → localStorage 초기화 → 로그인 페이지 이동
   const handleLogout = async () => {
     try {
-      await fetch('http://localhost:8000/api/auth/logout', { method: 'POST' });
+      await fetch('/api/auth/logout', { method: 'POST' });
     } catch (e) {
       // 백엔드 오류여도 클라이언트 로그아웃은 진행
     } finally {

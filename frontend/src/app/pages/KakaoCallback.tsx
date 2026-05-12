@@ -12,7 +12,7 @@ export function KakaoCallback() {
     if (!code || isRequesting.current) return;
     isRequesting.current = true;
 
-    fetch('http://localhost:8000/api/auth/kakao/login', {
+    fetch('/api/auth/kakao/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code }),

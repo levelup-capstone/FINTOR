@@ -18,7 +18,7 @@ type ApiNews = {
 type PopularNews = ApiNews & { view_count: number };
 
 const handleNewsClick = (newsId: number, link: string) => {
-  fetch(`http://localhost:8000/api/v1/market/news/${newsId}/view`, { method: "POST" })
+  fetch(`/api/v1/market/news/${newsId}/view`, { method: "POST" })
     .catch(() => {});
   window.open(link, "_blank", "noopener,noreferrer");
 };
@@ -43,7 +43,7 @@ export function News() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("http://localhost:8000/api/v1/market/news")
+    fetch("/api/v1/market/news")
       .then((r) => r.json())
       .then((json) => {
         if (json.success) setApiNews(json.data);
@@ -55,7 +55,7 @@ export function News() {
   // 인기 뉴스 (24시간 기준 조회수 상위 5개) - 1분마다 자동 새로고침
   useEffect(() => {
     const fetchPopular = () => {
-      fetch("http://localhost:8000/api/v1/market/news/popular")
+      fetch("/api/v1/market/news/popular")
         .then((r) => r.json())
         .then((json) => {
           if (json.success) setPopularNews(json.data);

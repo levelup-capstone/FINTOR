@@ -1066,32 +1066,35 @@ def _calc_today_index(start_date, total_days: int = 7) -> int:
 
 def _calc_portfolio_value(
     initial_cash: float,
-    allocations: dict,
-    prices_map: dict,  # {asset: [D1, D2, ..., D7]}
+    prev_value: float,                 # 어제 평가액 (Day1이면 initial_cash)
+    prev_allocations: dict | None,     # 어제 배분 (Day1이면 None)
+    prices_map: dict,                  # {asset: [D1, D2, ..., D7]}
     day_index: int,
 ) -> float:
     """
-    당일 매매 확정 시 portfolio_value 계산.
-    각 자산 비중 × (당일가격 / D1가격) 으로 수익률 반영.
+    오늘의 평가액 = 어제 평가액 × Σ(어제 비율 × 오늘가격/어제가격).
+    Day1은 아직 운용 전이므로 initial_cash 그대로 반환.
     """
-    total = 0.0
+    if day_index <= 1 or not prev_allocations:
+        return round(initial_cash, 2)
+
+    factor = 0.0
     leftover_ratio = 100.0
-    for asset, ratio in allocations.items():
+    for asset, ratio in prev_allocations.items():
         if ratio <= 0:
             continue
         prices = prices_map.get(asset)
         if not prices or len(prices) < day_index:
             continue
-        d1_price = prices[0]
+        prev_price  = prices[day_index - 2]
         today_price = prices[day_index - 1]
-        if d1_price == 0:
+        if not prev_price:
             continue
-        asset_value = (ratio / 100) * initial_cash * (today_price / d1_price)
-        total += asset_value
+        factor += (ratio / 100) * (today_price / prev_price)
         leftover_ratio -= ratio
-    # 배분되지 않은 비중은 현금(원화)으로 그대로 보존
-    total += (max(leftover_ratio, 0) / 100) * initial_cash
-    return round(total, 2)
+    # 미배분 비중은 현금 — 가격 변동 없으니 factor 1로 더해줌
+    factor += max(leftover_ratio, 0) / 100
+    return round(prev_value * factor, 2)
 
 
 @app.get("/api/game/participation/{participation_id}")
@@ -1140,12 +1143,14 @@ def get_participation(
         for a in alloc_rows
     ]
 
-    # 현재 총 자산: 가장 최근 allocation의 비중을 오늘 가격으로 재계산
+    # 현재 총 자산: 가장 최근 확정 평가액에서 출발해 오늘까지 같은 배분으로 누적 운용
     latest_alloc = alloc_rows[-1] if alloc_rows else None
     if latest_alloc:
-        current_value = _calc_portfolio_value(
-            p.initial_cash, latest_alloc.allocations, prices_map, today_idx
-        )
+        current_value = latest_alloc.portfolio_value
+        for d in range(latest_alloc.day_index + 1, today_idx + 1):
+            current_value = _calc_portfolio_value(
+                p.initial_cash, current_value, latest_alloc.allocations, prices_map, d
+            )
     else:
         current_value = p.initial_cash
     total_return = round((current_value - p.initial_cash) / p.initial_cash * 100, 2)
@@ -1206,12 +1211,17 @@ def allocate_game(
         prices_map.setdefault(row.asset, [None] * 7)
         prices_map[row.asset][row.day_index - 1] = row.price
 
-    # portfolio_value 계산 (방법 A: 백엔드 계산)
+    # 오늘 평가액 = 어제 배분으로 어제→오늘 운용한 결과
+    prev_alloc = crud.get_allocation_by_day(db, participation_id, today_idx - 1) if today_idx > 1 else None
+    prev_value = prev_alloc.portfolio_value if prev_alloc else p.initial_cash
+    prev_allocations = prev_alloc.allocations if prev_alloc else None
+
     portfolio_value = _calc_portfolio_value(
-        p.initial_cash, req.allocations, prices_map, today_idx
+        p.initial_cash, prev_value, prev_allocations, prices_map, today_idx
     )
     return_rate = round((portfolio_value - p.initial_cash) / p.initial_cash * 100, 2)
 
+    # 새 배분(req.allocations)은 오늘→내일 운용용으로 저장됨
     alloc = crud.create_allocation(
         db, participation_id, today_idx, req.allocations, portfolio_value, return_rate,
         tags=req.tags, memo=req.memo,
@@ -1270,8 +1280,9 @@ def _game_daily_settlement():
                 prices_map.setdefault(row.asset, [None] * 7)
                 prices_map[row.asset][row.day_index - 1] = row.price
 
+            # 미확정 정산: 어제 배분 그대로 누적 적용 (어제 평가액 × 어제 비율 × 오늘/어제 가격)
             portfolio_value = _calc_portfolio_value(
-                p.initial_cash, prev_alloc.allocations, prices_map, today_idx
+                p.initial_cash, prev_alloc.portfolio_value, prev_alloc.allocations, prices_map, today_idx
             )
             return_rate = round((portfolio_value - p.initial_cash) / p.initial_cash * 100, 2)
             crud.create_allocation(db, p.id, today_idx, prev_alloc.allocations, portfolio_value, return_rate)

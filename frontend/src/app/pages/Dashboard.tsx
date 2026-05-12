@@ -17,7 +17,7 @@ export function Dashboard() {
     try {
       const userId = JSON.parse(raw)?.data?.userId;
       if (!userId) return;
-      fetch(`http://localhost:8000/api/v1/users/${userId}/level`)
+      fetch(`/api/v1/users/${userId}/level`)
         .then(r => r.json())
         .then(json => {
           if (json.success) {
@@ -62,7 +62,7 @@ export function Dashboard() {
     try {
       const userId = JSON.parse(raw)?.data?.userId;
       if (!userId) return;
-      fetch(`http://localhost:8000/api/v1/portfolios?userid=${userId}`)
+      fetch(`/api/v1/portfolios?userid=${userId}`)
         .then(r => r.json())
         .then(json => {
           if (json.success) {
@@ -94,7 +94,7 @@ export function Dashboard() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 60000);
     try {
-      const res = await fetch('http://localhost:8000/api/v1/market/indices', { signal: controller.signal });
+      const res = await fetch('/api/v1/market/indices', { signal: controller.signal });
       const json = await res.json();
       if (json.success) {
         setMarketData(json.data);

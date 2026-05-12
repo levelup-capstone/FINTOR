@@ -77,7 +77,7 @@ export function SimulatorCalendar() {
     );
   }
 
-  const { scenario, today_index, current_value, total_return, initial_cash, allocations, news_by_day } = pData;
+  const { scenario, today_index, current_value, total_return, initial_cash, allocations, news_by_day, prices } = pData;
 
   // Day 요약 빌드
   const daySummaries: DaySummary[] = Array.from({ length: TOTAL_DAYS }, (_, i) => {
@@ -107,13 +107,26 @@ export function SimulatorCalendar() {
   const selectedNews = news_by_day[selectedDay] ?? [];
 
   // 자산 배분 변화 테이블
-  type AllocationRow = { asset: string; label: string; color: string; start: number; end: number };
+  type AllocationRow = { asset: string; label: string; color: string; start: number; end: number; realizedPL: number | null };
   const allocRows: AllocationRow[] = scenario.assets.map((asset) => {
     const meta = ASSET_META[asset] ?? { label: asset, color: '#94a3b8' };
     const start = prevAlloc?.allocations[asset] ?? 0;
     const end = selectedAlloc?.allocations[asset] ?? 0;
-    return { asset, label: meta.label, color: meta.color, start, end };
+    const delta = end - start;
+    let realizedPL: number | null = null;
+    if (selectedDay > 1 && prevAlloc && selectedAlloc?.portfolio_value != null && delta < 0) {
+      const priceArr = prices[asset] ?? [];
+      const todayPrice = priceArr[selectedDay - 1] ?? 0;
+      const yesterdayPrice = priceArr[selectedDay - 2] ?? todayPrice;
+      if (todayPrice && yesterdayPrice) {
+        const tradeWon = (Math.abs(delta) / 100) * selectedAlloc.portfolio_value;
+        realizedPL = Math.round(tradeWon * (todayPrice - yesterdayPrice) / todayPrice);
+      }
+    }
+    return { asset, label: meta.label, color: meta.color, start, end, realizedPL };
   });
+  const totalRealizedPL = allocRows.reduce((s, r) => s + (r.realizedPL ?? 0), 0);
+  const hasAnyRealized = allocRows.some((r) => r.realizedPL !== null);
 
   const isUp = total_return >= 0;
 
@@ -227,7 +240,7 @@ export function SimulatorCalendar() {
               {summary.portfolioValue != null
                 ? `₩${summary.portfolioValue.toLocaleString()}`
                 : selectedDay === today_index && !selectedAlloc
-                ? `₩${initial_cash.toLocaleString()} (미확정)`
+                ? `오늘의 매매 확정 이전`
                 : '--'}
             </div>
             <div className="flex gap-2 flex-wrap">
@@ -322,9 +335,10 @@ export function SimulatorCalendar() {
                   <thead>
                     <tr className="border-b border-outline-variant/30 text-on-surface-variant text-xs">
                       <th className="pb-2 text-left font-semibold">자산군</th>
-                      {selectedDay > 1 && prevAlloc && <th className="pb-2 text-right font-semibold w-14">시작</th>}
-                      <th className="pb-2 text-right font-semibold w-14">종료</th>
-                      {selectedDay > 1 && prevAlloc && <th className="pb-2 text-right font-semibold w-16">변화</th>}
+                      {selectedDay > 1 && prevAlloc && <th className="pb-2 text-right font-semibold w-12">시작</th>}
+                      <th className="pb-2 text-right font-semibold w-12">종료</th>
+                      {selectedDay > 1 && prevAlloc && <th className="pb-2 text-right font-semibold w-14">변화</th>}
+                      {hasAnyRealized && <th className="pb-2 text-right font-semibold w-24">실현 손익</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-outline-variant/20 text-on-surface">
@@ -348,10 +362,33 @@ export function SimulatorCalendar() {
                                 {delta > 0 ? '+' : ''}{delta}%
                               </td>
                             )}
+                            {hasAnyRealized && (
+                              <td className={`py-2 text-right text-sm font-bold tabular-nums ${
+                                r.realizedPL == null
+                                  ? 'text-on-surface-variant/40'
+                                  : r.realizedPL > 0
+                                  ? 'text-emerald-700'
+                                  : r.realizedPL < 0
+                                  ? 'text-red-700'
+                                  : 'text-on-surface-variant'
+                              }`}>
+                                {r.realizedPL == null ? '—' : `${r.realizedPL > 0 ? '+' : ''}₩${r.realizedPL.toLocaleString()}`}
+                              </td>
+                            )}
                           </tr>
                         );
                       })}
                   </tbody>
+                  {hasAnyRealized && (
+                    <tfoot>
+                      <tr className="border-t-2 border-outline-variant/30 text-xs">
+                        <td colSpan={selectedDay > 1 && prevAlloc ? 4 : 2} className="pt-2 text-right text-on-surface-variant font-bold uppercase tracking-widest">합계</td>
+                        <td className={`pt-2 text-right text-sm font-black tabular-nums ${totalRealizedPL > 0 ? 'text-emerald-700' : totalRealizedPL < 0 ? 'text-red-700' : 'text-on-surface-variant'}`}>
+                          {totalRealizedPL > 0 ? '+' : ''}₩{totalRealizedPL.toLocaleString()}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
                 </table>
               </div>
             )}
@@ -361,7 +398,7 @@ export function SimulatorCalendar() {
           <div className="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant/30 p-6">
             <h3 className="text-[16px] font-bold uppercase tracking-widest text-on-surface-variant mb-4 flex items-center gap-2">
               <span className="material-symbols-outlined text-[16px]">newspaper</span>
-              Day {selectedDay}에 본 뉴스 {selectedNews.length}개
+              Day {selectedDay} 뉴스
             </h3>
             {selectedNews.length === 0 ? (
               <div className="text-center text-on-surface-variant/60 py-6 text-sm">이 날의 뉴스가 없습니다.</div>
