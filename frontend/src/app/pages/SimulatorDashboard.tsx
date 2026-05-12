@@ -82,24 +82,29 @@ export function SimulatorDashboard() {
       setSelectedNewsDay(d.today_index);
 
       const todayAlloc = d.allocations.find((a) => a.day_index === d.today_index);
-      const prevAlloc = d.allocations.find((a) => a.day_index === d.today_index - 1);
+      // 가장 최근에 확정된 배분(ancestor)을 찾음 — 중간에 미확정/미정산 일이 있어도 추적
+      let ancestorAlloc: typeof d.allocations[number] | undefined;
+      for (let day = d.today_index - 1; day >= 1; day--) {
+        const a = d.allocations.find((x) => x.day_index === day);
+        if (a) { ancestorAlloc = a; break; }
+      }
       const initAlloc: Record<string, number> = {};
       d.scenario.assets.forEach((a) => { initAlloc[a] = 0; });
       if (todayAlloc) {
         Object.assign(initAlloc, todayAlloc.allocations);
         setTodayConfirmed(true);
-      } else if (prevAlloc) {
-        // 전날 확정 배분을 오늘의 초기 배분으로 유지
-        Object.assign(initAlloc, prevAlloc.allocations);
+      } else if (ancestorAlloc) {
+        // 가장 최근 확정 배분을 오늘의 초기 배분으로 유지
+        Object.assign(initAlloc, ancestorAlloc.allocations);
       }
       setAllocation({ ...initAlloc });
-      // confirmedAlloc은 전날 확정 기준으로 설정 (도넛 차트 "현재 배분" 기준)
+      // confirmedAlloc은 ancestor 기준 (도넛 차트 "현재 배분" 기준)
       const confirmedBase: Record<string, number> = {};
       d.scenario.assets.forEach((a) => { confirmedBase[a] = 0; });
       if (todayAlloc) {
         Object.assign(confirmedBase, todayAlloc.allocations);
-      } else if (prevAlloc) {
-        Object.assign(confirmedBase, prevAlloc.allocations);
+      } else if (ancestorAlloc) {
+        Object.assign(confirmedBase, ancestorAlloc.allocations);
       }
       setConfirmedAlloc({ ...confirmedBase });
 
@@ -234,18 +239,19 @@ export function SimulatorDashboard() {
 
   const handleConfirm = async () => {
     if (isLastDay) {
-      // Day 7: 미확정이면 finalize 트리거 후 결과 페이지로 이동
+      // Day 7: 강제 전량 현금화로 기록한 뒤 결과 페이지로 이동
       if (!todayConfirmed) {
-        if (!totalRatioOk) return;
         const pid = Number(localStorage.getItem('participationId'));
-        const result = await confirmAllocation(pid, allocation, activeTags, memo);
+        const cashAllocation = Object.fromEntries(scenario.assets.map((a) => [a, 0]));
+        const result = await confirmAllocation(pid, cashAllocation, activeTags, memo);
         if (!result) return;
-        setConfirmedAlloc({ ...allocation });
+        setAllocation(cashAllocation);
+        setConfirmedAlloc(cashAllocation);
         setTodayConfirmed(true);
         setEquity(Math.floor(result.portfolio_value));
         setTotalReturn(result.return_rate);
       }
-      navigate('/dashboard/simulator/season/calendar');
+      navigate('/dashboard/simulator/season/result');
       return;
     }
     if (!totalRatioOk || todayConfirmed) return;
@@ -257,6 +263,7 @@ export function SimulatorDashboard() {
       setEquity(Math.floor(result.portfolio_value));
       setTotalReturn(result.return_rate);
       setRebalancingOpen(false);
+      navigate('/dashboard/simulator/season/calendar');
     }
   };
 
@@ -496,49 +503,71 @@ export function SimulatorDashboard() {
           </section>
         </div>
 
-        {/* 우측: 포트폴리오 리밸런싱 요약 (클릭 시 모달) */}
+        {/* 우측: 포트폴리오 리밸런싱 요약 (클릭 시 모달) — Day 7은 전체가 결과 보기 버튼 */}
         <div className="lg:col-span-2 flex flex-col gap-6">
-          <button
-            type="button"
-            onClick={() => setRebalancingOpen(true)}
-            className="bg-surface-container-lowest rounded-2xl p-6 shadow-sm border border-outline-variant/30 hover:border-[#1A237E]/60 hover:shadow-md transition-all text-left cursor-pointer group"
-          >
-            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-              <h2 className="text-xl font-black tracking-tight text-on-surface flex items-center gap-2">
-                <span className="material-symbols-outlined">pie_chart</span>
-                포트폴리오 리밸런싱
-              </h2>
-              {todayConfirmed && !isLastDay ? (
-                <span className="bg-emerald-100 text-emerald-700 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1">
-                  <span className="material-symbols-outlined text-[14px]">check_circle</span>
-                  오늘 매매 확정 완료
-                </span>
-              ) : (
-                <span className="bg-[#1A237E]/10 text-[#1A237E] text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1 group-hover:bg-[#1A237E] group-hover:text-white transition-colors">
-                  {isLastDay ? '결과 보기' : '리밸런싱하기'}
-                  <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
-                </span>
-              )}
-            </div>
-            <div className="flex flex-wrap items-center justify-around gap-4 sm:gap-6 bg-surface-container-low p-4 sm:p-6 rounded-xl border border-outline-variant/30">
-              <div className="flex flex-col items-center gap-2 flex-shrink-0">
-                <span className="font-bold text-on-surface-variant text-sm">현재 배분</span>
-                <DonutPlaceholder allocation={confirmedAlloc} assets={scenario.assets} />
-              </div>
-              <div className="flex flex-col items-center gap-2 flex-1 min-w-0">
-                <div className="text-center">
-                  <span className="block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">현재 총 자산</span>
-                  <span className="text-2xl md:text-3xl font-black tracking-tight text-on-surface whitespace-nowrap">₩{equity.toLocaleString()}</span>
-                </div>
-                <div className="text-center">
-                  <span className="block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">남은 현금 (원화)</span>
-                  <span className="text-base font-bold tracking-tight text-on-surface whitespace-nowrap">
-                    {confirmedLeftoverRatio % 1 === 0 ? confirmedLeftoverRatio : confirmedLeftoverRatio.toFixed(2)}% · ₩{confirmedLeftoverWon.toLocaleString()}
+          {isLastDay ? (
+            <button
+              type="button"
+              onClick={async () => {
+                if (!todayConfirmed) {
+                  const pid = Number(localStorage.getItem('participationId'));
+                  const result = await confirmAllocation(pid, allocation, activeTags, memo);
+                  if (result) {
+                    setConfirmedAlloc({ ...allocation });
+                    setTodayConfirmed(true);
+                    setEquity(Math.floor(result.portfolio_value));
+                    setTotalReturn(result.return_rate);
+                  }
+                }
+                navigate('/dashboard/simulator/season/result');
+              }}
+              className="bg-[#1A237E] text-white rounded-2xl shadow-sm hover:shadow-lg hover:bg-[#1f2a8c] transition-all flex items-center justify-center gap-4 p-12 md:p-16 cursor-pointer min-h-[300px] group"
+            >
+              <span className="text-3xl md:text-5xl font-black tracking-tight">결과 보기</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setRebalancingOpen(true)}
+              className="bg-surface-container-lowest rounded-2xl p-6 shadow-sm border border-outline-variant/30 hover:border-[#1A237E]/60 hover:shadow-md transition-all text-left cursor-pointer group"
+            >
+              <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                <h2 className="text-xl font-black tracking-tight text-on-surface flex items-center gap-2">
+                  <span className="material-symbols-outlined">pie_chart</span>
+                  포트폴리오 리밸런싱
+                </h2>
+                {todayConfirmed ? (
+                  <span className="bg-emerald-100 text-emerald-700 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[14px]">check_circle</span>
+                    오늘 매매 확정 완료
                   </span>
+                ) : (
+                  <span className="bg-[#1A237E]/10 text-[#1A237E] text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1 group-hover:bg-[#1A237E] group-hover:text-white transition-colors">
+                    리밸런싱하기
+                    <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center justify-around gap-4 sm:gap-6 bg-surface-container-low p-4 sm:p-6 rounded-xl border border-outline-variant/30">
+                <div className="flex flex-col items-center gap-2 flex-shrink-0">
+                  <span className="font-bold text-on-surface-variant text-sm">현재 배분</span>
+                  <DonutPlaceholder allocation={confirmedAlloc} assets={scenario.assets} />
+                </div>
+                <div className="flex flex-col items-center gap-2 flex-1 min-w-0">
+                  <div className="text-center">
+                    <span className="block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">현재 총 자산</span>
+                    <span className="text-2xl md:text-3xl font-black tracking-tight text-on-surface whitespace-nowrap">₩{equity.toLocaleString()}</span>
+                  </div>
+                  <div className="text-center">
+                    <span className="block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">남은 현금 (원화)</span>
+                    <span className="text-base font-bold tracking-tight text-on-surface whitespace-nowrap">
+                      {confirmedLeftoverRatio % 1 === 0 ? confirmedLeftoverRatio : confirmedLeftoverRatio.toFixed(2)}% · ₩{confirmedLeftoverWon.toLocaleString()}
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-          </button>
+            </button>
+          )}
         </div>
       </div>
 
@@ -588,7 +617,7 @@ export function SimulatorDashboard() {
                   <DonutPlaceholder allocation={allocation} assets={scenario.assets} />
                 </div>
               </div>
-
+ㅁ
               <div className="grid grid-cols-1 gap-y-4">
                 {scenario.assets.map((key) => {
                 const meta = ASSET_META[key] ?? { label: key, color: '#94a3b8', accent: '' };

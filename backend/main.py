@@ -1211,14 +1211,33 @@ def allocate_game(
         prices_map.setdefault(row.asset, [None] * 7)
         prices_map[row.asset][row.day_index - 1] = row.price
 
-    # 오늘 평가액 = 어제 배분으로 어제→오늘 운용한 결과
-    prev_alloc = crud.get_allocation_by_day(db, participation_id, today_idx - 1) if today_idx > 1 else None
-    prev_value = prev_alloc.portfolio_value if prev_alloc else p.initial_cash
-    prev_allocations = prev_alloc.allocations if prev_alloc else None
+    # 가장 최근에 확정된 배분(ancestor) 찾기 — 중간에 미정산 일이 있어도 추적
+    ancestor_alloc = None
+    if today_idx > 1:
+        for d in range(today_idx - 1, 0, -1):
+            a = crud.get_allocation_by_day(db, participation_id, d)
+            if a:
+                ancestor_alloc = a
+                break
 
-    portfolio_value = _calc_portfolio_value(
-        p.initial_cash, prev_value, prev_allocations, prices_map, today_idx
-    )
+    if ancestor_alloc:
+        # ancestor 이후 ~ 어제까지 누락된 일자를 ancestor 배분 그대로 채우면서 누적 운용
+        running_value = ancestor_alloc.portfolio_value
+        for d in range(ancestor_alloc.day_index + 1, today_idx):
+            running_value = _calc_portfolio_value(
+                p.initial_cash, running_value, ancestor_alloc.allocations, prices_map, d
+            )
+            gap_return_rate = round((running_value - p.initial_cash) / p.initial_cash * 100, 2)
+            crud.create_allocation(
+                db, participation_id, d, ancestor_alloc.allocations, running_value, gap_return_rate
+            )
+        # 어제 → 오늘 운용 (ancestor 배분 기준)
+        portfolio_value = _calc_portfolio_value(
+            p.initial_cash, running_value, ancestor_alloc.allocations, prices_map, today_idx
+        )
+    else:
+        # Day 1 첫 확정: 아직 운용 전
+        portfolio_value = p.initial_cash
     return_rate = round((portfolio_value - p.initial_cash) / p.initial_cash * 100, 2)
 
     # 새 배분(req.allocations)은 오늘→내일 운용용으로 저장됨
@@ -1268,9 +1287,15 @@ def _game_daily_settlement():
                 skipped += 1
                 continue
 
-            prev_alloc = crud.get_allocation_by_day(db, p.id, today_idx - 1)
-            if not prev_alloc:
-                print(f"   ⚠️  participation {p.id} (user {p.user_id}): 전날 배분 없음 — 스킵")
+            # 가장 최근 확정 배분 찾기 (ancestor)
+            ancestor_alloc = None
+            for d in range(today_idx - 1, 0, -1):
+                a = crud.get_allocation_by_day(db, p.id, d)
+                if a:
+                    ancestor_alloc = a
+                    break
+            if not ancestor_alloc:
+                print(f"   ⚠️  participation {p.id} (user {p.user_id}): 이전 배분 기록 없음 — 스킵")
                 skipped += 1
                 continue
 
@@ -1280,14 +1305,16 @@ def _game_daily_settlement():
                 prices_map.setdefault(row.asset, [None] * 7)
                 prices_map[row.asset][row.day_index - 1] = row.price
 
-            # 미확정 정산: 어제 배분 그대로 누적 적용 (어제 평가액 × 어제 비율 × 오늘/어제 가격)
-            portfolio_value = _calc_portfolio_value(
-                p.initial_cash, prev_alloc.portfolio_value, prev_alloc.allocations, prices_map, today_idx
-            )
-            return_rate = round((portfolio_value - p.initial_cash) / p.initial_cash * 100, 2)
-            crud.create_allocation(db, p.id, today_idx, prev_alloc.allocations, portfolio_value, return_rate)
+            # ancestor 이후 ~ today_idx까지 누락된 일자 모두 채움 (ancestor 배분 그대로 누적)
+            running_value = ancestor_alloc.portfolio_value
+            for d in range(ancestor_alloc.day_index + 1, today_idx + 1):
+                running_value = _calc_portfolio_value(
+                    p.initial_cash, running_value, ancestor_alloc.allocations, prices_map, d
+                )
+                rr = round((running_value - p.initial_cash) / p.initial_cash * 100, 2)
+                crud.create_allocation(db, p.id, d, ancestor_alloc.allocations, running_value, rr)
             settled += 1
-            print(f"   ✅ participation {p.id} (user {p.user_id}) Day {today_idx} 자동 정산 — ₩{portfolio_value:,.0f} ({return_rate:+.2f}%)")
+            print(f"   ✅ participation {p.id} (user {p.user_id}) Day {ancestor_alloc.day_index + 1}~{today_idx} 자동 정산 — ₩{running_value:,.0f}")
 
             if today_idx >= 7:
                 crud.finalize_participation(db, p.id)

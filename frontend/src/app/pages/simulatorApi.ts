@@ -8,6 +8,30 @@ function authHeaders() {
   };
 }
 
+// 401: 토큰 만료 또는 미인증 → 세션 정리 후 로그인 페이지로 강제 이동
+function expireSession() {
+  localStorage.clear();
+  window.location.href = '/';
+}
+
+async function apiCall<T>(path: string, init: RequestInit = {}, fallback: T | null = null): Promise<T | null> {
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers: { ...authHeaders(), ...(init.headers || {}) },
+    });
+    if (res.status === 401) {
+      expireSession();
+      return fallback;
+    }
+    const json = await res.json();
+    if (json.success) return json.data as T;
+    return fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export type DayNews = {
   slot: number;
   title: string;
@@ -49,38 +73,21 @@ export type ParticipationData = {
   initial_cash: number;
   current_value: number;
   total_return: number;
-  prices: Record<string, number[]>;      // { asset: [D1..D7] }
-  macros: DayMacro[];                    // D1~오늘
+  prices: Record<string, number[]>;       // { asset: [D1..D7] }
+  macros: DayMacro[];                     // D1~오늘
   news_by_day: Record<number, DayNews[]>; // { day: [...] }
-  allocations: DayAllocation[];          // 과거 확정 내역
+  allocations: DayAllocation[];           // 과거 확정 내역
 };
 
 export async function fetchParticipation(participationId: number): Promise<ParticipationData | null> {
-  try {
-    const res = await fetch(`${API_BASE}/api/game/participation/${participationId}`, {
-      headers: authHeaders(),
-    });
-    const json = await res.json();
-    if (json.success) return json.data as ParticipationData;
-    return null;
-  } catch {
-    return null;
-  }
+  return apiCall<ParticipationData>(`/api/game/participation/${participationId}`);
 }
 
 export async function startGame(scenarioId: number): Promise<{ participation_id: number; scenario_id: number } | null> {
-  try {
-    const res = await fetch(`${API_BASE}/api/game/start`, {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify({ scenario_id: scenarioId }),
-    });
-    const json = await res.json();
-    if (json.success) return json.data;
-    return null;
-  } catch {
-    return null;
-  }
+  return apiCall(`/api/game/start`, {
+    method: 'POST',
+    body: JSON.stringify({ scenario_id: scenarioId }),
+  });
 }
 
 export async function confirmAllocation(
@@ -89,57 +96,22 @@ export async function confirmAllocation(
   tags: string[],
   memo: string,
 ): Promise<{ day_index: number; portfolio_value: number; return_rate: number; is_finalized: boolean } | null> {
-  try {
-    const res = await fetch(`${API_BASE}/api/game/participation/${participationId}/allocate`, {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify({ allocations, tags, memo }),
-    });
-    const json = await res.json();
-    if (json.success) return json.data;
-    return null;
-  } catch {
-    return null;
-  }
+  return apiCall(`/api/game/participation/${participationId}/allocate`, {
+    method: 'POST',
+    body: JSON.stringify({ allocations, tags, memo }),
+  });
 }
 
 // [DEV ONLY] 시나리오 진행 전체 초기화 - 테스트 전용, 배포 전 제거 필요
 export async function devResetParticipation(): Promise<{ deleted_count: number } | null> {
-  try {
-    const res = await fetch(`${API_BASE}/api/game/dev/reset-all`, {
-      method: 'POST',
-      headers: authHeaders(),
-    });
-    const json = await res.json();
-    if (json.success) return json.data;
-    return null;
-  } catch {
-    return null;
-  }
+  return apiCall(`/api/game/dev/reset-all`, { method: 'POST' });
 }
 
 // [DEV ONLY] 다음 일차 강제 이동 - 테스트 전용, 배포 전 제거 필요
 export async function devAdvanceDay(participationId: number): Promise<{ today_index: number } | null> {
-  try {
-    const res = await fetch(`${API_BASE}/api/game/participation/${participationId}/dev/advance-day`, {
-      method: 'POST',
-      headers: authHeaders(),
-    });
-    const json = await res.json();
-    if (json.success) return json.data;
-    return null;
-  } catch {
-    return null;
-  }
+  return apiCall(`/api/game/participation/${participationId}/dev/advance-day`, { method: 'POST' });
 }
 
 export async function fetchScenarios(): Promise<ScenarioInfo[]> {
-  try {
-    const res = await fetch(`${API_BASE}/api/game/scenarios`, { headers: authHeaders() });
-    const json = await res.json();
-    if (json.success) return json.data;
-    return [];
-  } catch {
-    return [];
-  }
+  return (await apiCall<ScenarioInfo[]>(`/api/game/scenarios`, {}, [])) ?? [];
 }

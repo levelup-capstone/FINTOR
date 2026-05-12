@@ -8,6 +8,7 @@ import { News } from "./pages/News";
 import { SimulatorOverview } from "./pages/SimulatorOverview";
 import { SimulatorDashboard } from "./pages/SimulatorDashboard";
 import { SimulatorCalendar } from "./pages/SimulatorCalendar";
+import { SimulatorResult } from "./pages/SimulatorResult";
 import { DevAuth } from "./pages/DevAuth"; // [DEV ONLY] 배포 전 제거
 
 export const router = createBrowserRouter([
@@ -37,6 +38,7 @@ export const router = createBrowserRouter([
       { path: "simulator", Component: SimulatorOverview },
       { path: "simulator/season", Component: SimulatorDashboard },
       { path: "simulator/season/calendar", Component: SimulatorCalendar },
+      { path: "simulator/season/result", Component: SimulatorResult },
     ],
   },
 ]);
