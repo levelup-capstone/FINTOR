@@ -70,6 +70,7 @@ export function SimulatorDashboard() {
   const [selectedSignalIdx, setSelectedSignalIdx] = useState<number | null>(null);
   const [selectedNewsDay, setSelectedNewsDay] = useState<number>(1);
   const [rebalancingOpen, setRebalancingOpen] = useState(false);
+  const [hasOpenedToday, setHasOpenedToday] = useState(false);
 
   useEffect(() => {
     const pid = localStorage.getItem('participationId');
@@ -108,7 +109,7 @@ export function SimulatorDashboard() {
       }
       setConfirmedAlloc({ ...confirmedBase });
 
-      const journalKey = `fintor_journal_d${d.today_index}`;
+      const journalKey = `fintor_journal_p${d.participation_id}_d${d.today_index}`;
       try {
         const raw = localStorage.getItem(journalKey);
         if (raw) {
@@ -118,13 +119,24 @@ export function SimulatorDashboard() {
         }
       } catch {}
 
+      // 오늘 리밸런싱 카드를 이미 열어본 적 있는지 (참여 + 일자별)
+      const rebalKey = `fintor_rebal_opened_p${d.participation_id}_d${d.today_index}`;
+      setHasOpenedToday(localStorage.getItem(rebalKey) === '1');
+
       setLoading(false);
     });
   }, []);
 
+  const markRebalanceOpened = () => {
+    if (!pData) return;
+    const rebalKey = `fintor_rebal_opened_p${pData.participation_id}_d${pData.today_index}`;
+    localStorage.setItem(rebalKey, '1');
+    setHasOpenedToday(true);
+  };
+
   useEffect(() => {
     if (!pData) return;
-    const journalKey = `fintor_journal_d${pData.today_index}`;
+    const journalKey = `fintor_journal_p${pData.participation_id}_d${pData.today_index}`;
     try { localStorage.setItem(journalKey, JSON.stringify({ tags: activeTags, memo })); } catch {}
   }, [activeTags, memo, pData]);
 
@@ -471,7 +483,7 @@ export function SimulatorDashboard() {
                 <div className="flex items-center justify-between gap-2 mb-2">
                   <span className="px-2 py-0.5 rounded text-[12px] font-bold tracking-widest bg-surface-container-high text-on-surface-variant">#{s.news_type}</span>
                 </div>
-                <h3 className="font-bold text-on-surface text-[20px] group-hover:text-[#1A237E] transition-colors line-clamp-3">{s.title}</h3>
+                <h3 className="font-bold text-on-surface text-[18px] group-hover:text-[#1A237E] transition-colors line-clamp-3">{s.title}</h3>
               </button>
             ))}
           </div>
@@ -509,6 +521,7 @@ export function SimulatorDashboard() {
             <button
               type="button"
               onClick={async () => {
+                markRebalanceOpened();
                 if (!todayConfirmed) {
                   const pid = Number(localStorage.getItem('participationId'));
                   const result = await confirmAllocation(pid, allocation, activeTags, memo);
@@ -521,15 +534,19 @@ export function SimulatorDashboard() {
                 }
                 navigate('/dashboard/simulator/season/result');
               }}
-              className="bg-[#1A237E] text-white rounded-2xl shadow-sm hover:shadow-lg hover:bg-[#1f2a8c] transition-all flex items-center justify-center gap-4 p-12 md:p-16 cursor-pointer min-h-[300px] group"
+              className={`bg-[#1A237E] text-white rounded-2xl shadow-sm hover:shadow-lg hover:bg-[#1f2a8c] transition-all flex items-center justify-center gap-4 p-12 md:p-16 cursor-pointer min-h-[300px] group ${
+                !todayConfirmed && !hasOpenedToday ? 'animate-navy-blink' : ''
+              }`}
             >
               <span className="text-3xl md:text-5xl font-black tracking-tight">결과 보기</span>
             </button>
           ) : (
             <button
               type="button"
-              onClick={() => setRebalancingOpen(true)}
-              className="bg-surface-container-lowest rounded-2xl p-6 shadow-sm border border-outline-variant/30 hover:border-[#1A237E]/60 hover:shadow-md transition-all text-left cursor-pointer group"
+              onClick={() => { markRebalanceOpened(); setRebalancingOpen(true); }}
+              className={`bg-surface-container-lowest rounded-2xl p-6 shadow-sm border border-outline-variant/30 hover:border-[#1A237E]/60 hover:shadow-md transition-all text-left cursor-pointer group ${
+                !todayConfirmed && !hasOpenedToday ? 'animate-navy-blink' : ''
+              }`}
             >
               <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                 <h2 className="text-xl font-black tracking-tight text-on-surface flex items-center gap-2">
@@ -1036,8 +1053,10 @@ function NewsDetailModal({ signal, onClose }: { signal: DayNews; onClose: () => 
             <span className="material-symbols-outlined text-[#1A237E] mt-0.5">tips_and_updates</span>
             <div className="flex flex-col gap-1">
               <span className="text-sm font-bold text-on-surface">투자 판단 팁</span>
-              <p className="text-xs text-on-surface-variant leading-relaxed">
-                이 뉴스가 어떤 자산에 영향을 줄지 거시지표 차트와 함께 비교해보세요. 모든 뉴스가 신호는 아닙니다 — 노이즈일 가능성도 염두에 두세요.
+              <p className="text-xs text-on-surface-variant font-bold leading-relaxed whitespace-pre-line">
+                {signal.hint
+                  ? signal.hint
+                  : '이 뉴스가 어떤 자산에 영향을 줄지 거시지표 차트와 함께 비교해보세요. 모든 뉴스가 신호는 아닙니다 — 노이즈일 가능성도 염두에 두세요.'}
               </p>
             </div>
           </div>

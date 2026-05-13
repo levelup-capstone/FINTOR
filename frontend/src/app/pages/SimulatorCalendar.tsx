@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { fetchParticipation, type ParticipationData } from './simulatorApi';
+import { fetchParticipation, devAdvanceDay, type ParticipationData } from './simulatorApi';
 
 const TOTAL_DAYS = 7;
 
@@ -512,6 +512,28 @@ export function SimulatorCalendar() {
           </div>
         </div>
       </section>
+
+      {/* 시즌 진행 중일 때만: 다음 날로 넘어가기 (시즌 압축 진행용) */}
+      {!pData.is_finalized && today_index < TOTAL_DAYS && (
+        <section className="flex flex-col items-center gap-2 pt-4 border-t border-outline-variant/30">
+          <button
+            onClick={async () => {
+              const pid = Number(localStorage.getItem('participationId'));
+              const result = await devAdvanceDay(pid);
+              if (result) {
+                navigate('/dashboard/simulator/season');
+              }
+            }}
+            className="w-full md:w-auto px-8 py-4 rounded-xl bg-[#1A237E] text-white font-bold text-lg hover:bg-[#1A237E]/90 hover:shadow-md transition-all flex items-center justify-center gap-2"
+          >
+            다음 날로 넘어가기
+            <span className="material-symbols-outlined">arrow_forward</span>
+          </button>
+          <span className="text-xs text-on-surface-variant">
+            Day {today_index} → Day {today_index + 1}
+          </span>
+        </section>
+      )}
     </div>
   );
 }

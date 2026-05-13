@@ -37,6 +37,7 @@ export type DayNews = {
   title: string;
   description: string;
   news_type: string;
+  hint: string | null;
 };
 
 export type DayMacro = {

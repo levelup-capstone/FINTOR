@@ -1130,7 +1130,7 @@ def get_participation(
     for day in range(1, today_idx + 1):
         news_rows = crud.get_news_by_scenario_and_day(db, scenario.id, day)
         news_by_day[day] = [
-            {"slot": n.slot, "title": n.title, "description": n.description, "news_type": n.news_type}
+            {"slot": n.slot, "title": n.title, "description": n.description, "news_type": n.news_type, "hint": n.hint}
             for n in news_rows
         ]
 
