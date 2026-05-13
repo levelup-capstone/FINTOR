@@ -24,6 +24,7 @@ import models, schemas, crud
 from database import engine, get_db
 from seed import seed as run_seed
 from game_seed import seed as run_game_seed
+from scoring import calculate_score
 
 # DB 테이블 생성
 models.Base.metadata.create_all(bind=engine)
@@ -1020,7 +1021,6 @@ def dev_advance_day(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    # start_date를 하루 앞당겨 today_index를 1 증가시키는 방식으로 일차를 강제 진행
     p = crud.get_participation(db, participation_id)
     if not p or p.user_id != current_user.id:
         return JSONResponse(status_code=404, content={"success": False, "message": "참여 정보를 찾을 수 없습니다."})
@@ -1040,7 +1040,6 @@ def dev_reset_all_participations(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    # 해당 유저의 모든 participation을 삭제 (cascade로 allocation/result도 함께 삭제됨)
     all_participations = db.query(models.GameParticipation).filter(
         models.GameParticipation.user_id == current_user.id
     ).all()
@@ -1166,6 +1165,7 @@ def get_participation(
                 "theme":    scenario.theme,
                 "assets":   scenario.assets,
                 "recap_text": scenario.recap_text,
+                "key_lesson": scenario.key_lesson,
             },
             "today_index":    today_idx,
             "is_finalized":   p.is_finalized,
@@ -1246,9 +1246,16 @@ def allocate_game(
         tags=req.tags, memo=req.memo,
     )
 
-    # Day 7 확정 시 자동 종료
+    # Day 7 확정 시 자동 종료 + 점수 산출
     if today_idx >= 7:
         crud.finalize_participation(db, participation_id)
+        try:
+            scenario = crud.get_scenario_by_id(db, p.scenario_id)
+            all_allocs = crud.get_allocations_by_participation(db, participation_id)
+            scores = calculate_score(all_allocs, scenario)
+            crud.save_game_result(db, participation_id, scores)
+        except Exception as e:
+            print(f"🚨 [점수 산출 오류] participation {participation_id}: {e}")
 
     return {
         "success": True,
@@ -1257,6 +1264,40 @@ def allocate_game(
             "portfolio_value": alloc.portfolio_value,
             "return_rate":     alloc.return_rate,
             "is_finalized":    today_idx >= 7,
+        }
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────
+# [게임 시뮬레이터] 점수 조회
+# ─────────────────────────────────────────────────────────────────────
+
+@app.get("/api/game/participation/{participation_id}/score")
+def get_game_score(
+    participation_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    p = crud.get_participation(db, participation_id)
+    if not p or p.user_id != current_user.id:
+        return JSONResponse(status_code=404, content={"success": False, "message": "참여 정보를 찾을 수 없습니다."})
+
+    result = crud.get_game_result(db, participation_id)
+    if not result:
+        return JSONResponse(status_code=404, content={"success": False, "message": "아직 점수가 산출되지 않았습니다."})
+
+    return {
+        "success": True,
+        "data": {
+            "participation_id":        result.participation_id,
+            "final_return":            result.final_return,
+            "correct_strategy_return": result.correct_strategy_return,
+            "return_score":            result.return_score,
+            "scenario_score":          result.scenario_score,
+            "diversity_score":         result.diversity_score,
+            "stability_score":         result.stability_score,
+            "total_score":             result.total_score,
+            "grade":                   result.grade,
         }
     }
 

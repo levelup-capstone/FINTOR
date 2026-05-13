@@ -64,6 +64,7 @@ export type ScenarioInfo = {
   theme: string;
   assets: string[];
   recap_text: string | null;
+  key_lesson: string | null;
 };
 
 export type ParticipationData = {
@@ -115,4 +116,20 @@ export async function devAdvanceDay(participationId: number): Promise<{ today_in
 
 export async function fetchScenarios(): Promise<ScenarioInfo[]> {
   return (await apiCall<ScenarioInfo[]>(`/api/game/scenarios`, {}, [])) ?? [];
+}
+
+export type GameScore = {
+  participation_id: number;
+  final_return: number | null;
+  correct_strategy_return: number | null;
+  return_score: number | null;
+  scenario_score: number | null;
+  diversity_score: number | null;
+  stability_score: number | null;
+  total_score: number | null;
+  grade: string | null;
+};
+
+export async function fetchGameScore(participationId: number): Promise<GameScore | null> {
+  return apiCall<GameScore>(`/api/game/participation/${participationId}/score`);
 }

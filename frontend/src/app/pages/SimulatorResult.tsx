@@ -1,17 +1,22 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
-import { fetchParticipation, devResetParticipation, type ParticipationData } from './simulatorApi';
+import { fetchParticipation, fetchGameScore, devResetParticipation, type ParticipationData, type GameScore } from './simulatorApi';
 
 export function SimulatorResult() {
   const navigate = useNavigate();
   const [pData, setPData] = useState<ParticipationData | null>(null);
+  const [scoreData, setScoreData] = useState<GameScore | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const pid = localStorage.getItem('participationId');
     if (!pid) { setLoading(false); return; }
-    fetchParticipation(Number(pid)).then((d) => {
+    fetchParticipation(Number(pid)).then(async (d) => {
       setPData(d);
+      if (d?.is_finalized) {
+        const score = await fetchGameScore(Number(pid));
+        setScoreData(score);
+      }
       setLoading(false);
     });
   }, []);
@@ -70,12 +75,11 @@ export function SimulatorResult() {
     : '';
   const initialCashY = toY(initial_cash);
 
-  // 임시 점수 (백엔드 분석 결과 연동 전)
-  const returnScore = Math.max(0, Math.min(50, Math.round((total_return + 20) * 1.25))); // -20% ~ +20% → 0~50
-  const diversificationScore = 20;
-  const stabilityScore = 10;
-  const adaptationScore = 2;
-  const totalScore = returnScore + diversificationScore + stabilityScore + adaptationScore;
+  const returnScore    = scoreData?.return_score    ?? 0;
+  const scenarioScore  = scoreData?.scenario_score  ?? 0;
+  const diversityScore = scoreData?.diversity_score ?? 0;
+  const stabilityScore = scoreData?.stability_score ?? 0;
+  const totalScore     = scoreData?.total_score     ?? 0;
 
   // 임시 랭킹
   const rank = 87;
@@ -107,17 +111,17 @@ export function SimulatorResult() {
               style={{ background: `conic-gradient(#1A237E ${totalScore}%, #efecf5 ${totalScore}% 100%)` }}
             >
               <div className="bg-surface-container-lowest rounded-full w-[85%] h-[85%] flex flex-col items-center justify-center">
-                <span className="text-3xl font-black tracking-tight text-[#1A237E]">{totalScore}</span>
+                <span className="text-3xl font-black tracking-tight text-[#1A237E]">{Math.round(totalScore)}</span>
                 <span className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">/ 100</span>
               </div>
             </div>
             <span className="text-base font-bold text-on-surface">종합 투자 점수</span>
           </div>
           <div className="flex-1 w-full flex flex-col gap-4 md:border-l border-outline-variant/30 md:pl-6 pt-4 md:pt-0">
-            <ScoreBar label="수익률" score={returnScore} max={50} weight="50%" />
-            <ScoreBar label="분산투자" score={diversificationScore} max={25} weight="25%" />
-            <ScoreBar label="안정성" score={stabilityScore} max={15} weight="15%" />
-            <ScoreBar label="시나리오 적응" score={adaptationScore} max={10} weight="10%" />
+            <ScoreBar label="수익률" score={Math.round(returnScore)} max={30} />
+            <ScoreBar label="시나리오 적응" score={Math.round(scenarioScore)} max={30} />
+            <ScoreBar label="분산투자" score={Math.round(diversityScore)} max={20} />
+            <ScoreBar label="안정성" score={Math.round(stabilityScore)} max={20} />
           </div>
         </div>
 
@@ -221,14 +225,8 @@ export function SimulatorResult() {
           <h3 className="text-xl font-black tracking-tight text-on-surface">AI 회고 리포트</h3>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <RetroCard icon="monitoring" title="시황 요약" tone="primary">
-            예상보다 길어진 고금리 기조로 인해 성장주 중심의 포트폴리오가 큰 타격을 받았습니다. 반면, 현금 흐름이 우수한 가치주와 단기 채권의 매력도가 상승한 시즌이었습니다.
-          </RetroCard>
-          <RetroCard icon="price_check" title="주요 수익원" tone="primary">
-            초기 배당주 비중 확대로 인해 하락장에서도 안정적인 방어가 가능했습니다. 특히 금융 섹터 편입은 이번 시즌 가장 성공적인 결정으로 분석됩니다.
-          </RetroCard>
-          <RetroCard icon="warning" title="아쉬운 판단" tone="error">
-            기술주 반등을 너무 이르게 예측하여 손절매 타이밍을 놓친 점이 수익률 저하의 주된 원인입니다. 매크로 지표 확인 전 선취매는 리스크가 높습니다.
+          <RetroCard icon="monitoring" title="시나리오 해설" tone="primary">
+            {scenario.recap_text ?? '데이터가 존재하지 않습니다.'}
           </RetroCard>
           {/* Key Lesson (강조) */}
           <div className="bg-[#1A237E]/5 border-2 border-[#1A237E]/30 rounded-2xl p-6 flex flex-col justify-center gap-3">
@@ -236,10 +234,16 @@ export function SimulatorResult() {
               <span className="material-symbols-outlined" style={{ fontVariationSettings: '"FILL" 1' }}>lightbulb</span>
               <span className="text-xs font-bold uppercase tracking-widest">Key Lesson</span>
             </div>
-            <p className="text-xl md:text-2xl font-black tracking-tight text-on-surface leading-tight">
-              "금리 사이클에 역행하지 말고,<br />현금 비중을 유연하게 활용하라."
+            <p className="text-xl md:text-2xl font-black tracking-tight text-on-surface leading-tight whitespace-pre-line">
+              {scenario.key_lesson ?? '데이터가 존재하지 않습니다.'}
             </p>
           </div>
+          <RetroCard icon="price_check" title="좋았던 판단" tone="primary">
+            초기 배당주 비중 확대로 인해 하락장에서도 안정적인 방어가 가능했습니다. 특히 금융 섹터 편입은 이번 시즌 가장 성공적인 결정으로 분석됩니다.
+          </RetroCard>
+          <RetroCard icon="warning" title="아쉬운 판단" tone="error">
+            기술주 반등을 너무 이르게 예측하여 손절매 타이밍을 놓친 점이 수익률 저하의 주된 원인입니다. 매크로 지표 확인 전 선취매는 리스크가 높습니다.
+          </RetroCard>
         </div>
       </section>
 
@@ -295,13 +299,13 @@ export function SimulatorResult() {
   );
 }
 
-function ScoreBar({ label, score, max, weight }: { label: string; score: number; max: number; weight: string }) {
+function ScoreBar({ label, score, max }: { label: string; score: number; max: number }) {
   const pct = max === 0 ? 0 : (score / max) * 100;
   return (
     <div>
       <div className="flex justify-between mb-1 flex-wrap gap-x-2">
         <span className="text-sm font-semibold text-on-surface-variant">{label}</span>
-        <span className="text-sm font-semibold text-on-surface tabular-nums">{score}/{max}점 · 가중치 {weight}</span>
+        <span className="text-sm font-semibold text-on-surface tabular-nums">{score}/{max}점</span>
       </div>
       <div className="w-full h-2 bg-surface-container rounded-full overflow-hidden">
         <div className="bg-[#1A237E] h-full rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
@@ -318,7 +322,7 @@ function RetroCard({ icon, title, tone, children }: { icon: string; title: strin
         <span className="material-symbols-outlined">{icon}</span>
         <span className="text-base font-bold">{title}</span>
       </div>
-      <p className="text-sm font-medium text-on-surface-variant leading-relaxed">{children}</p>
+      <p className="text-sm font-medium text-on-surface-variant leading-relaxed whitespace-pre-line">{children}</p>
     </div>
   );
 }

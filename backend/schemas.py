@@ -109,3 +109,20 @@ class DayAllocationItem(BaseModel):
 class GameParticipationResponse(BaseModel):
     success: bool
     data: Optional[dict] = None
+
+
+class GameScoreData(BaseModel):
+    participation_id:        int
+    final_return:            Optional[float] = None
+    correct_strategy_return: Optional[float] = None
+    return_score:            Optional[float] = None
+    scenario_score:          Optional[float] = None
+    diversity_score:         Optional[float] = None
+    stability_score:         Optional[float] = None
+    total_score:             Optional[float] = None
+    grade:                   Optional[str]   = None
+
+
+class GameScoreResponse(BaseModel):
+    success: bool
+    data:    Optional[GameScoreData] = None

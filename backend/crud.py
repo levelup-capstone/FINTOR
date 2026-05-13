@@ -272,6 +272,30 @@ def finalize_participation(db: Session, participation_id: int):
     return p
 
 
+def get_game_result(db: Session, participation_id: int):
+    return db.query(models.GameResult).filter_by(participation_id=participation_id).first()
+
+
+def save_game_result(db: Session, participation_id: int, scores: dict) -> models.GameResult:
+    """점수 dict를 받아 GameResult를 생성하거나 업데이트한다."""
+    result = get_game_result(db, participation_id)
+    if result is None:
+        result = models.GameResult(participation_id=participation_id)
+        db.add(result)
+
+    result.final_return            = scores.get("final_return")
+    result.correct_strategy_return = scores.get("correct_strategy_return")
+    result.return_score            = scores.get("return_score")
+    result.scenario_score          = scores.get("scenario_score")
+    result.diversity_score         = scores.get("diversity_score")
+    result.stability_score         = scores.get("stability_score")
+    result.total_score             = scores.get("total_score")
+    result.grade                   = scores.get("grade")
+    db.commit()
+    db.refresh(result)
+    return result
+
+
 def delete_old_news(db: Session, days_to_keep: int = 3) -> int:
     """
     저장된 지 특정 일수(days_to_keep)가 지난 과거 뉴스 데이터를 DB에서 삭제합니다.

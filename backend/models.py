@@ -135,8 +135,16 @@ class GameScenario(Base):
     theme        = Column(String, nullable=False)                # "고금리 장기화"
     scenario_key = Column(String, nullable=False, unique=True)
     assets       = Column(JSONB, nullable=False)                 # ["cash","bonds",...]
-    recap_text   = Column(String, nullable=True)
-    created_at   = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    key_lesson              = Column(String,  nullable=True)
+    recap_text              = Column(String,  nullable=True)
+    # 점수 산출용 메타데이터
+    correct_assets          = Column(JSONB,   nullable=True)  # ["bonds", "gold"]
+    trap_assets             = Column(JSONB,   nullable=True)  # ["growth-stock", "coin"]
+    correct_strategy_return = Column(Float,   nullable=True)  # 정답 전략 수익률 (%)
+    key_event_day           = Column(Integer, nullable=True)  # 핵심 이벤트 발생 일자
+    trap_event_day          = Column(Integer, nullable=True)  # 함정 이벤트 발생 일자
+    crash_event_day         = Column(Integer, nullable=True)  # 급락 이벤트 발생 일자
+    created_at              = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     prices         = relationship("GameDayPrice",      back_populates="scenario", cascade="all, delete-orphan")
     news           = relationship("GameDayNews",       back_populates="scenario", cascade="all, delete-orphan")
@@ -220,16 +228,18 @@ class GameAllocation(Base):
 class GameResult(Base):
     __tablename__ = "game_results"
 
-    id               = Column(Integer, primary_key=True, index=True)
-    participation_id = Column(Integer, ForeignKey("game_participations.id", ondelete="CASCADE"), nullable=False, unique=True)
-    final_return     = Column(Float, nullable=True)
-    return_score     = Column(Float, nullable=True)
-    diversity_score  = Column(Float, nullable=True)
-    stability_score  = Column(Float, nullable=True)
-    scenario_score   = Column(Float, nullable=True)
-    total_score      = Column(Float, nullable=True)
-    rank             = Column(Integer, nullable=True)
-    feedback_text    = Column(String, nullable=True)
-    created_at       = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    id                      = Column(Integer, primary_key=True, index=True)
+    participation_id        = Column(Integer, ForeignKey("game_participations.id", ondelete="CASCADE"), nullable=False, unique=True)
+    final_return            = Column(Float,   nullable=True)
+    correct_strategy_return = Column(Float,   nullable=True)
+    return_score            = Column(Float,   nullable=True)
+    scenario_score          = Column(Float,   nullable=True)
+    diversity_score         = Column(Float,   nullable=True)
+    stability_score         = Column(Float,   nullable=True)
+    total_score             = Column(Float,   nullable=True)
+    grade                   = Column(String,  nullable=True)
+    rank                    = Column(Integer, nullable=True)
+    feedback_text           = Column(String,  nullable=True)
+    created_at              = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     participation = relationship("GameParticipation", back_populates="result")
