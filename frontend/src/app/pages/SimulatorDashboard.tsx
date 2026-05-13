@@ -617,7 +617,7 @@ export function SimulatorDashboard() {
                   <DonutPlaceholder allocation={allocation} assets={scenario.assets} />
                 </div>
               </div>
-ㅁ
+
               <div className="grid grid-cols-1 gap-y-4">
                 {scenario.assets.map((key) => {
                 const meta = ASSET_META[key] ?? { label: key, color: '#94a3b8', accent: '' };
@@ -660,34 +660,34 @@ export function SimulatorDashboard() {
                       className="w-full h-2 bg-surface-variant rounded-lg appearance-none cursor-pointer"
                       style={{ accentColor: meta.color }}
                       disabled={todayConfirmed} />
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <div className="flex items-center bg-surface-container rounded-md px-2 py-1 flex-shrink-0">
+                        <input type="number" min={0} max={100} step={0.01}
+                          value={ratioDisplay === 0 ? '' : ratioDisplay} placeholder="0"
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => setRatio(e.target.value === '' ? 0 : Number(e.target.value))}
+                          disabled={todayConfirmed}
+                          className="w-12 bg-transparent text-center text-sm font-bold text-on-surface focus:outline-none placeholder:text-on-surface-variant/40" />
+                        <span className="text-xs font-semibold text-on-surface-variant">%</span>
+                      </div>
+                      <span className="text-on-surface-variant text-xs">·</span>
+                      <div className="flex items-center bg-surface-container rounded-md px-2 py-1 flex-1 min-w-0">
+                        <span className="text-xs font-semibold text-on-surface-variant flex-shrink-0">₩</span>
+                        <input type="number" min={0} step={1}
+                          value={won === 0 ? '' : won} placeholder="0"
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => setWon(e.target.value === '' ? 0 : Number(e.target.value))}
+                          disabled={todayConfirmed}
+                          className="w-full bg-transparent text-right text-sm font-bold text-on-surface focus:outline-none min-w-0 placeholder:text-on-surface-variant/40" />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
                       <button type="button" onClick={() => stepRatio(-STEP_PCT)} disabled={ratio <= 0 || todayConfirmed}
-                        className="flex-shrink-0 flex items-center justify-center px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-bold border border-blue-200 hover:bg-blue-100 active:scale-95 transition disabled:opacity-40 disabled:cursor-not-allowed min-w-[52px]">
+                        className="flex-1 flex items-center justify-center px-3 py-2 rounded-lg bg-blue-50 text-blue-700 text-sm font-bold border border-blue-200 hover:bg-blue-100 active:scale-95 transition disabled:opacity-40 disabled:cursor-not-allowed">
                         −{STEP_PCT}%
                       </button>
-                      <div className="flex-1 flex items-center gap-1.5 min-w-[180px]">
-                        <div className="flex items-center bg-surface-container rounded-md px-2 py-1 flex-shrink-0">
-                          <input type="number" min={0} max={100} step={0.01}
-                            value={ratioDisplay === 0 ? '' : ratioDisplay} placeholder="0"
-                            onFocus={(e) => e.target.select()}
-                            onChange={(e) => setRatio(e.target.value === '' ? 0 : Number(e.target.value))}
-                            disabled={todayConfirmed}
-                            className="w-12 bg-transparent text-center text-sm font-bold text-on-surface focus:outline-none placeholder:text-on-surface-variant/40" />
-                          <span className="text-xs font-semibold text-on-surface-variant">%</span>
-                        </div>
-                        <span className="text-on-surface-variant text-xs">·</span>
-                        <div className="flex items-center bg-surface-container rounded-md px-2 py-1 flex-1 min-w-0">
-                          <span className="text-xs font-semibold text-on-surface-variant flex-shrink-0">₩</span>
-                          <input type="number" min={0} step={1}
-                            value={won === 0 ? '' : won} placeholder="0"
-                            onFocus={(e) => e.target.select()}
-                            onChange={(e) => setWon(e.target.value === '' ? 0 : Number(e.target.value))}
-                            disabled={todayConfirmed}
-                            className="w-full bg-transparent text-right text-sm font-bold text-on-surface focus:outline-none min-w-0 placeholder:text-on-surface-variant/40" />
-                        </div>
-                      </div>
                       <button type="button" onClick={() => stepRatio(STEP_PCT)} disabled={ratio >= 100 || todayConfirmed}
-                        className="flex-shrink-0 flex items-center justify-center px-3 py-1.5 rounded-lg bg-red-50 text-red-700 text-xs font-bold border border-red-200 hover:bg-red-100 active:scale-95 transition disabled:opacity-40 disabled:cursor-not-allowed min-w-[52px]">
+                        className="flex-1 flex items-center justify-center px-3 py-2 rounded-lg bg-red-50 text-red-700 text-sm font-bold border border-red-200 hover:bg-red-100 active:scale-95 transition disabled:opacity-40 disabled:cursor-not-allowed">
                         +{STEP_PCT}%
                       </button>
                     </div>
