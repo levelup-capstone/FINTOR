@@ -1286,6 +1286,8 @@ def get_game_score(
     if not result:
         return JSONResponse(status_code=404, content={"success": False, "message": "아직 점수가 산출되지 않았습니다."})
 
+    rank_info = crud.get_rank_for_participation(db, participation_id)
+
     return {
         "success": True,
         "data": {
@@ -1297,7 +1299,9 @@ def get_game_score(
             "diversity_score":         result.diversity_score,
             "stability_score":         result.stability_score,
             "total_score":             result.total_score,
-            "grade":                   result.grade,
+            "rank":                    rank_info["rank"]       if rank_info else None,
+            "total_participants":      rank_info["total"]      if rank_info else None,
+            "percentile":              rank_info["percentile"] if rank_info else None,
         }
     }
 

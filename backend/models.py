@@ -237,7 +237,6 @@ class GameResult(Base):
     diversity_score         = Column(Float,   nullable=True)
     stability_score         = Column(Float,   nullable=True)
     total_score             = Column(Float,   nullable=True)
-    grade                   = Column(String,  nullable=True)
     rank                    = Column(Integer, nullable=True)
     feedback_text           = Column(String,  nullable=True)
     created_at              = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

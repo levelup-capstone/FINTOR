@@ -127,7 +127,9 @@ export type GameScore = {
   diversity_score: number | null;
   stability_score: number | null;
   total_score: number | null;
-  grade: string | null;
+  rank: number | null;
+  total_participants: number | null;
+  percentile: number | null;
 };
 
 export async function fetchGameScore(participationId: number): Promise<GameScore | null> {

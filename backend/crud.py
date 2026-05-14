@@ -290,10 +290,47 @@ def save_game_result(db: Session, participation_id: int, scores: dict) -> models
     result.diversity_score         = scores.get("diversity_score")
     result.stability_score         = scores.get("stability_score")
     result.total_score             = scores.get("total_score")
-    result.grade                   = scores.get("grade")
     db.commit()
     db.refresh(result)
     return result
+
+
+def get_rank_for_participation(db: Session, participation_id: int) -> dict | None:
+    """같은 시나리오 내 실시간 순위 계산 (저장 없이 조회 시점에 COUNT)"""
+    result = get_game_result(db, participation_id)
+    if not result or result.total_score is None:
+        return None
+
+    participation = get_participation(db, participation_id)
+    if not participation:
+        return None
+
+    scenario_id = participation.scenario_id
+    my_score = result.total_score
+
+    higher_count = (
+        db.query(models.GameResult)
+        .join(models.GameParticipation, models.GameResult.participation_id == models.GameParticipation.id)
+        .filter(
+            models.GameParticipation.scenario_id == scenario_id,
+            models.GameResult.total_score > my_score,
+        )
+        .count()
+    )
+    total_count = (
+        db.query(models.GameResult)
+        .join(models.GameParticipation, models.GameResult.participation_id == models.GameParticipation.id)
+        .filter(
+            models.GameParticipation.scenario_id == scenario_id,
+            models.GameResult.total_score.isnot(None),
+        )
+        .count()
+    )
+
+    my_rank = higher_count + 1
+    percentile = round(my_rank / total_count * 100) if total_count > 0 else 100
+
+    return {"rank": my_rank, "total": total_count, "percentile": percentile}
 
 
 def delete_old_news(db: Session, days_to_keep: int = 3) -> int:

@@ -193,16 +193,6 @@ def score_d_stability(effective: dict[int, dict], scenario_meta: dict) -> float:
     return d1 + d2
 
 
-# ── 등급 ──────────────────────────────────────────────────────────────────
-
-def get_grade(total_score: float) -> str:
-    if total_score >= 90:   return "전략가"
-    if total_score >= 75:   return "분석가"
-    if total_score >= 55:   return "학습자"
-    if total_score >= 40:   return "입문자"
-    return "재도전"
-
-
 # ── 메인 산출 함수 ─────────────────────────────────────────────────────────
 
 def calculate_score(allocations: list, scenario) -> dict:
@@ -263,7 +253,6 @@ def calculate_score(allocations: list, scenario) -> dict:
         "diversity_score":         round(c_score, 2),
         "stability_score":         round(d_score, 2),
         "total_score":             total,
-        "grade":                   get_grade(total),
         "final_return":            round(user_return, 4),
         "correct_strategy_return": round(correct_return, 4),
     }
