@@ -88,10 +88,9 @@ export function SimulatorResult() {
   const stabilityScore = scoreData?.stability_score ?? 0;
   const totalScore     = scoreData?.total_score     ?? 0;
 
-  // 임시 랭킹
-  const rank = 87;
-  const totalUsers = 234;
-  const topPct = Math.round((rank / totalUsers) * 100);
+  const rank = scoreData?.rank ?? null;
+  const totalUsers = scoreData?.total_participants ?? null;
+  const topPct = scoreData?.percentile ?? null;
 
   return (
     <div className="flex flex-col gap-8">
@@ -140,14 +139,18 @@ export function SimulatorResult() {
           <div className="relative z-10 flex flex-col gap-1">
             <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Final Rank</span>
             <div className="flex items-baseline gap-2">
-              <span className="text-4xl font-black tracking-tight text-[#1A237E]">{rank}<span className="text-2xl text-on-surface-variant ml-1">위</span></span>
+              <span className="text-4xl font-black tracking-tight text-[#1A237E]">
+                {rank ?? '-'}<span className="text-2xl text-on-surface-variant ml-1">위</span>
+              </span>
             </div>
-            <p className="text-sm font-medium text-on-surface-variant">전체 {totalUsers}명 중</p>
+            <p className="text-sm font-medium text-on-surface-variant">전체 {totalUsers ?? '-'}명 중</p>
           </div>
           <div className="relative z-10 mt-6">
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-[#1A237E]/10 rounded-full">
               <span className="material-symbols-outlined text-[#1A237E] text-[16px]" style={{ fontVariationSettings: '"FILL" 1' }}>trending_up</span>
-              <span className="text-sm font-bold text-[#1A237E]">Top {topPct}% 달성</span>
+              <span className="text-sm font-bold text-[#1A237E]">
+                {topPct !== null ? `상위 ${topPct}% 달성` : '순위 집계 중'}
+              </span>
             </div>
           </div>
         </div>

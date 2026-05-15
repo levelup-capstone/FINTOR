@@ -120,7 +120,6 @@ class GameScoreData(BaseModel):
     diversity_score:         Optional[float] = None
     stability_score:         Optional[float] = None
     total_score:             Optional[float] = None
-    grade:                   Optional[str]   = None
 
 
 class GameScoreResponse(BaseModel):
