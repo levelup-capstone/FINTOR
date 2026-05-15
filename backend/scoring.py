@@ -7,7 +7,7 @@
   C. 분산투자 점수       20점
   D. 안정성 점수         20점  (D1: 12 + D2: 8)
 
-등급: 90~100 전략가 / 75~89 분석가 / 55~74 학습자 / 40~54 입문자 / ~39 재도전
+
 """
 
 TOTAL_DAYS = 7
@@ -149,16 +149,22 @@ def score_c_diversity(effective: dict[int, dict]) -> float:
 # ── D. 안정성 점수 (20점) ─────────────────────────────────────────────────
 
 def score_d1_volatility(effective: dict[int, dict]) -> float:
-    """D1: 일일 포트폴리오 변동률 평균 (12점)."""
+    """D1: 일일 포트폴리오 하락 변동률 평균 (12점)."""
+    has_data = False
     daily_changes: list[float] = []
     for day in range(2, TOTAL_DAYS + 1):
         pv_today = effective[day].get("portfolio_value")
         pv_prev  = effective[day - 1].get("portfolio_value")
         if pv_today is not None and pv_prev is not None and pv_prev > 0:
-            daily_changes.append(abs((pv_today - pv_prev) / pv_prev * 100))
+            has_data = True
+            change = (pv_today - pv_prev) / pv_prev * 100
+            if change < 0:
+                daily_changes.append(abs(change))
 
+    if not has_data:
+        return 6.0  # portfolio_value 데이터 자체가 없음
     if not daily_changes:
-        return 6.0  # 데이터 없으면 중간값
+        return 12.0  # 데이터는 있으나 하락일 없음 = 완전 안정
 
     avg_vol = sum(daily_changes) / len(daily_changes)
     if avg_vol < 1.0:   return 12.0
@@ -205,7 +211,7 @@ def calculate_score(allocations: list, scenario) -> dict:
 
     Returns:
         {return_score, scenario_score, diversity_score, stability_score,
-         total_score, grade, final_return, correct_strategy_return}
+         total_score, final_return, correct_strategy_return}
     """
     # ORM → dict 변환
     alloc_dicts = []
@@ -221,6 +227,11 @@ def calculate_score(allocations: list, scenario) -> dict:
             alloc_dicts.append(a)
 
     effective = get_effective_allocations(alloc_dicts)
+
+    # 한 번도 배분하지 않은 경우: 시나리오 적응 점수 0점
+    never_allocated = not any(
+        bool(a.get("allocations")) for a in alloc_dicts
+    )
 
     scenario_meta = {
         "correct_assets":          getattr(scenario, "correct_assets",          None) or [],
@@ -242,7 +253,7 @@ def calculate_score(allocations: list, scenario) -> dict:
     correct_return = scenario_meta["correct_strategy_return"]
 
     a_score = score_a_return(user_return, correct_return)
-    b_score = score_b_adaptation(effective, scenario_meta)
+    b_score = 0.0 if never_allocated else score_b_adaptation(effective, scenario_meta)
     c_score = score_c_diversity(effective)
     d_score = score_d_stability(effective, scenario_meta)
     total   = round(a_score + b_score + c_score + d_score, 2)
