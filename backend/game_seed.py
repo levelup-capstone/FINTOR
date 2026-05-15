@@ -34,6 +34,12 @@ SCENARIOS = [
             "theme": "고금리 장기화",
             "scenario_key": "season1_high_rate",
             "assets": ["bonds", "gold", "bluechip-stock", "growth-stock", "coin", "reits"],
+            "correct_assets":          ["bonds", "gold"],
+            "trap_assets":             ["growth-stock", "coin"],
+            "correct_strategy_return": 6.17,
+            "key_event_day":           4,
+            "trap_event_day":          3,
+            "crash_event_day":         4,
             "recap_text": (
                 "이번 시나리오의 핵심은 '금리가 높을 때 어떤 자산이 유리한가'였습니다.\n\n"
                 "물가(CPI)가 높게 유지되면 중앙은행은 금리를 내리기 어렵습니다. "
@@ -41,7 +47,7 @@ SCENARIOS = [
                 "성장주·코인은 큰 타격을 받습니다.\n\n"
                 "3일차가 가장 큰 함정이었습니다. 빅테크 실적 호조로 성장주·코인이 잠깐 반등했지만, "
                 "4일차 고용지표 이후 반등분을 모두 반납하고 더 크게 떨어졌습니다.\n\n"
-                "핵심 교훈: 금리가 오르는 환경에서는 채권·예금이 답입니다."
+                "핵심 교훈: 금리가 오르는 환경에서는 채권·예금이 유리합니다."
             ),
             "key_lesson": "금리가 올라가는 시기엔 잠깐의 반등을 쫓지 마세요.\n큰 흐름이 바뀌기 전까지, 확실한 수익이 보이는 자산을 지켜야 합니다.",
         },
@@ -252,6 +258,12 @@ SCENARIOS = [
             "theme": "경기 침체 공포",
             "scenario_key": "season2_recession_fear",
             "assets": ["dollar", "gold", "gov-bonds", "dividend-stock", "reits", "coin", "commodities", "cash"],
+            "correct_assets":          ["dollar", "gold"],
+            "trap_assets":             ["dividend-stock", "reits", "coin"],
+            "correct_strategy_return": 9.38,
+            "key_event_day":           4,
+            "trap_event_day":          3,
+            "crash_event_day":         4,
             "recap_text": (
                 "경기 침체 공포 환경에서는 '달러·금·국채'가 가장 안전한 피난처입니다.\n\n"
                 "3일차 정부의 대규모 경기부양책 발표가 가장 큰 함정이었습니다. "
@@ -456,6 +468,12 @@ SCENARIOS = [
             "theme": "유동성 파티",
             "scenario_key": "season3_liquidity_party",
             "assets": ["nasdaq", "bitcoin", "emerging", "bonds", "gold", "commodities", "stocks", "reits"],
+            "correct_assets":          ["nasdaq", "bitcoin"],
+            "trap_assets":             ["bonds", "gold"],
+            "correct_strategy_return": 29.74,
+            "key_event_day":           3,
+            "trap_event_day":          3,
+            "crash_event_day":         3,
             "recap_text": (
                 "유동성 파티 환경은 앞 단계들과 정반대입니다. "
                 "중앙은행이 금리를 제로로 내리고 대규모 양적 완화를 단행하면, "
@@ -668,6 +686,12 @@ SCENARIOS = [
             "theme": "스태그플레이션",
             "scenario_key": "season4_stagflation",
             "assets": ["oil", "gold", "agriculture", "tips", "dollar", "stocks", "cash", "bonds"],
+            "correct_assets":          ["oil", "gold", "agriculture", "tips"],
+            "trap_assets":             ["stocks", "bonds", "cash"],
+            "correct_strategy_return": 10.85,
+            "key_event_day":           4,
+            "trap_event_day":          3,
+            "crash_event_day":         4,
             "recap_text": (
                 "스태그플레이션은 물가 상승(인플레이션)과 경기 침체가 동시에 오는 가장 어려운 환경입니다.\n\n"
                 "주식은 경기 침체로 실적이 악화되고, 채권은 금리 인상으로 가격이 떨어집니다. "
@@ -874,6 +898,12 @@ SCENARIOS = [
             "theme": "블랙스완",
             "scenario_key": "season5_black_swan",
             "assets": ["cash", "dollar", "bonds", "gold", "oil", "reits", "stocks", "coin"],
+            "correct_assets":          ["cash", "dollar"],
+            "trap_assets":             ["reits", "stocks", "coin"],
+            "correct_strategy_return": 0.0,
+            "key_event_day":           3,
+            "trap_event_day":          3,
+            "crash_event_day":         5,
             "recap_text": (
                 "블랙스완은 아무도 예상 못한 충격적인 사건으로 모든 자산이 동시에 폭락하는 환경입니다.\n\n"
                 "가장 놀라운 점은 안전 자산으로 알려진 채권과 금조차 초기에는 크게 떨어진다는 것입니다. "

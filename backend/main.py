@@ -1338,7 +1338,7 @@ def get_game_review(
         f"시나리오 적응 {result.scenario_score}/30, "
         f"분산투자 {result.diversity_score}/20, "
         f"안정성 {result.stability_score}/20, "
-        f"종합 {result.total_score}/100 ({result.grade}), "
+        f"종합 {result.total_score}/100, "
         f"최종 수익률 {result.final_return}%"
     ) if result else "점수 데이터 없음"
 

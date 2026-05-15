@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { fetchParticipation, fetchScenarios, startGame, type ParticipationData, type ScenarioInfo } from './simulatorApi';
+import { fetchParticipation, fetchScenarios, fetchGameScore, startGame, type ParticipationData, type ScenarioInfo, type GameScore } from './simulatorApi';
 
 const TOTAL_DAYS = 7;
 
@@ -8,6 +8,7 @@ export function SimulatorOverview() {
   const navigate = useNavigate();
   const [data, setData] = useState<ParticipationData | null>(null);
   const [firstScenario, setFirstScenario] = useState<ScenarioInfo | null>(null);
+  const [scoreData, setScoreData] = useState<GameScore | null>(null);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
 
@@ -18,9 +19,16 @@ export function SimulatorOverview() {
     ];
     if (pid) {
       tasks.push(
-        fetchParticipation(Number(pid)).then((d) => {
-          if (d) setData(d);
-          else localStorage.removeItem('participationId'); // stale pid 정리
+        fetchParticipation(Number(pid)).then(async (d) => {
+          if (d) {
+            setData(d);
+            if (d.is_finalized) {
+              const score = await fetchGameScore(Number(pid));
+              setScoreData(score);
+            }
+          } else {
+            localStorage.removeItem('participationId');
+          }
         })
       );
     }
@@ -71,10 +79,8 @@ export function SimulatorOverview() {
   const progressPct = isParticipating ? Math.round((today_index / TOTAL_DAYS) * 100) : 0;
   const isUp = total_return >= 0;
 
-  // SimulatorResult와 동일한 점수/랭킹 계산 (임시: 백엔드 분석 연동 전)
-  const returnScore = Math.max(0, Math.min(50, Math.round((total_return + 20) * 1.25)));
-  const totalScore = returnScore + 20 + 10 + 2; // 분산/안정성/적응 임시
-  const rank = 87;
+  const totalScore = scoreData?.total_score ?? null;
+  const rank = scoreData?.rank ?? null;
 
   const onCardClick = () => {
     if (!isParticipating) {
@@ -144,14 +150,14 @@ export function SimulatorOverview() {
               <div className="flex flex-col gap-1">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-white/70">최종 점수</span>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-3xl md:text-4xl font-black tracking-tight">{totalScore}</span>
+                  <span className="text-3xl md:text-4xl font-black tracking-tight">{totalScore != null ? Math.round(totalScore) : '-'}</span>
                   <span className="text-sm font-semibold text-white/60">/ 100</span>
                 </div>
               </div>
               <div className="flex flex-col gap-1">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-white/70">랭킹</span>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-3xl md:text-4xl font-black tracking-tight">{rank}</span>
+                  <span className="text-3xl md:text-4xl font-black tracking-tight">{rank ?? '-'}</span>
                   <span className="text-sm font-semibold text-white/60">위</span>
                 </div>
               </div>
