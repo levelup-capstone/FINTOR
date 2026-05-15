@@ -1,11 +1,13 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
-import { fetchParticipation, fetchGameScore, devResetParticipation, type ParticipationData, type GameScore } from './simulatorApi';
+import { fetchParticipation, fetchGameScore, fetchGameReview, devResetParticipation, type ParticipationData, type GameScore, type GameReview } from './simulatorApi';
 
 export function SimulatorResult() {
   const navigate = useNavigate();
   const [pData, setPData] = useState<ParticipationData | null>(null);
   const [scoreData, setScoreData] = useState<GameScore | null>(null);
+  const [reviewData, setReviewData] = useState<GameReview | null>(null);
+  const [reviewLoading, setReviewLoading] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -14,8 +16,13 @@ export function SimulatorResult() {
     fetchParticipation(Number(pid)).then(async (d) => {
       setPData(d);
       if (d?.is_finalized) {
-        const score = await fetchGameScore(Number(pid));
+        const [score] = await Promise.all([fetchGameScore(Number(pid))]);
         setScoreData(score);
+        setReviewLoading(true);
+        fetchGameReview(Number(pid)).then((r) => {
+          setReviewData(r);
+          setReviewLoading(false);
+        });
       }
       setLoading(false);
     });
@@ -238,11 +245,11 @@ export function SimulatorResult() {
               {scenario.key_lesson ?? '데이터가 존재하지 않습니다.'}
             </p>
           </div>
-          <RetroCard icon="price_check" title="좋았던 판단" tone="primary">
-            초기 배당주 비중 확대로 인해 하락장에서도 안정적인 방어가 가능했습니다. 특히 금융 섹터 편입은 이번 시즌 가장 성공적인 결정으로 분석됩니다.
+          <RetroCard icon="price_check" title="좋았던 판단" tone="primary" loading={reviewLoading}>
+            {reviewData?.good_judgment ?? ''}
           </RetroCard>
-          <RetroCard icon="warning" title="아쉬운 판단" tone="error">
-            기술주 반등을 너무 이르게 예측하여 손절매 타이밍을 놓친 점이 수익률 저하의 주된 원인입니다. 매크로 지표 확인 전 선취매는 리스크가 높습니다.
+          <RetroCard icon="warning" title="아쉬운 판단" tone="error" loading={reviewLoading}>
+            {reviewData?.bad_judgment ?? ''}
           </RetroCard>
         </div>
       </section>
@@ -253,11 +260,19 @@ export function SimulatorResult() {
           <div className="w-10 h-10 rounded-full bg-surface-container text-on-surface flex items-center justify-center flex-shrink-0 mt-1">
             <span className="material-symbols-outlined">psychology</span>
           </div>
-          <div>
+          <div className="flex-1 min-w-0">
             <h4 className="text-base font-bold text-on-surface mb-1">총평 및 다음 시즌 조언</h4>
-            <p className="text-sm font-medium text-on-surface-variant leading-relaxed">
-              전반적으로 리스크 관리에 대한 이해도가 높으나, 확실한 기회에서 과감한 베팅이 부족했습니다. 다음 시즌에서는 포트폴리오의 10-15%를 알파 수익 창출을 위한 전술적 자산 배분으로 활용해 보시는 것을 추천합니다.
-            </p>
+            {reviewLoading ? (
+              <div className="flex flex-col gap-2 mt-2">
+                <div className="h-3 bg-surface-container rounded-full animate-pulse w-full" />
+                <div className="h-3 bg-surface-container rounded-full animate-pulse w-5/6" />
+                <div className="h-3 bg-surface-container rounded-full animate-pulse w-4/6" />
+              </div>
+            ) : (
+              <p className="text-sm font-medium text-on-surface-variant leading-relaxed">
+                {reviewData?.overall_review ?? ''}
+              </p>
+            )}
           </div>
         </div>
       </section>
@@ -314,7 +329,7 @@ function ScoreBar({ label, score, max }: { label: string; score: number; max: nu
   );
 }
 
-function RetroCard({ icon, title, tone, children }: { icon: string; title: string; tone: 'primary' | 'error'; children: ReactNode }) {
+function RetroCard({ icon, title, tone, loading, children }: { icon: string; title: string; tone: 'primary' | 'error'; loading?: boolean; children: ReactNode }) {
   const toneCls = tone === 'error' ? 'text-red-700' : 'text-[#1A237E]';
   return (
     <div className="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant/30 p-6 flex flex-col gap-3">
@@ -322,7 +337,15 @@ function RetroCard({ icon, title, tone, children }: { icon: string; title: strin
         <span className="material-symbols-outlined">{icon}</span>
         <span className="text-base font-bold">{title}</span>
       </div>
-      <p className="text-sm font-medium text-on-surface-variant leading-relaxed whitespace-pre-line">{children}</p>
+      {loading ? (
+        <div className="flex flex-col gap-2">
+          <div className="h-3 bg-surface-container rounded-full animate-pulse w-full" />
+          <div className="h-3 bg-surface-container rounded-full animate-pulse w-5/6" />
+          <div className="h-3 bg-surface-container rounded-full animate-pulse w-3/4" />
+        </div>
+      ) : (
+        <p className="text-sm font-medium text-on-surface-variant leading-relaxed whitespace-pre-line">{children}</p>
+      )}
     </div>
   );
 }

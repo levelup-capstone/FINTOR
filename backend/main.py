@@ -16,7 +16,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.orm import Session
 from bs4 import BeautifulSoup
-import google.generativeai as genai
+from openai import OpenAI
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -55,7 +55,7 @@ KIS_APP_SECRET = os.getenv("KIS_APP_SECRET")
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID")
 NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 security = HTTPBearer()
 
@@ -420,43 +420,37 @@ def scrape_naver_news_body(url: str) -> str:
         print(f"⚠️ 본문 스크래핑 에러 [{url}]: {e}", flush=True)
         return ""
 
-def analyze_news_with_gemini(title: str, full_text: str) -> dict:
-    if not GEMINI_API_KEY:
+def analyze_news_with_gpt(title: str, full_text: str) -> dict:
+    if not OPENAI_API_KEY:
         return {"category": "오류", "sentiment": "중립", "reason": "API 키 누락"}
 
-    genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel('gemini-3.1-flash-lite-preview')
-
+    client = OpenAI(api_key=OPENAI_API_KEY)
     truncated_text = full_text[:3000]
 
-    prompt = f"""
-    당신은 전문 금융 애널리스트입니다.
-    다음 뉴스 기사의 제목과 [본문]을 심층 분석하여, 반드시 아래의 JSON 형식으로만 응답해 주세요.
+    prompt = f"""당신은 전문 금융 애널리스트입니다.
+다음 뉴스 기사의 제목과 본문을 심층 분석하여, 반드시 아래의 JSON 형식으로만 응답해 주세요.
 
-    [뉴스 기사]
-    제목: {title}
-    본문: {truncated_text}
+[뉴스 기사]
+제목: {title}
+본문: {truncated_text}
 
-    [출력 형식 (JSON)]
-    {{
-        "category": "주식, ETF, 예적금, 채권, 암호화폐, 원화, 금, 기타 중 반드시 택1",
-        "sentiment": "호재, 악재, 중립 중 반드시 택1",
-        "tag": "반도체, 디스플레이, IT, 게임, AI, 로봇, 통신/네트워크, 자동차, 
-        배터리, 조선, 우주항공, 방산, 바이오, 헬스케어, 금융, 증권, 가상자산/핀테크, 
-        철강/금속, 화학/정유, 건설/건자재, 유통/소비재, 화장품/의류, 음식료, 엔터테인먼트/미디어, 여행/항공, 에너지/환경, 
-        전력/유틸리티, 기타 중 기사 본문의 핵심 주제와 가장 밀접한 것 반드시 택1",
-        "reason": "이 기사가 왜 해당 감성(호재/악재/중립)인지 본문 내용을 바탕으로 50자 이내로 명확하게 존댓말로 작성"
-    }}
-    """
+[출력 형식 (JSON)]
+{{
+    "category": "주식, ETF, 예적금, 채권, 암호화폐, 원화, 금, 기타 중 반드시 택1",
+    "sentiment": "호재, 악재, 중립 중 반드시 택1",
+    "tag": "반도체, 디스플레이, IT, 게임, AI, 로봇, 통신/네트워크, 자동차, 배터리, 조선, 우주항공, 방산, 바이오, 헬스케어, 금융, 증권, 가상자산/핀테크, 철강/금속, 화학/정유, 건설/건자재, 유통/소비재, 화장품/의류, 음식료, 엔터테인먼트/미디어, 여행/항공, 에너지/환경, 전력/유틸리티, 기타 중 기사 본문의 핵심 주제와 가장 밀접한 것 반드시 택1",
+    "reason": "이 기사가 왜 해당 감성(호재/악재/중립)인지 본문 내용을 바탕으로 50자 이내로 명확하게 존댓말로 작성"
+}}"""
 
     try:
-        response = model.generate_content(
-            prompt,
-            generation_config={"response_mime_type": "application/json"}
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
         )
-        return json.loads(response.text)
+        return json.loads(response.choices[0].message.content)
     except Exception as e:
-        print(f"🚨 Gemini 분석 에러: {e}", flush=True)
+        print(f"🚨 GPT 분석 에러: {e}", flush=True)
         return {"category": "오류", "sentiment": "중립", "reason": "분석 실패"}
 
 TFIDF_SIMILARITY_THRESHOLD = 0.35
@@ -562,7 +556,7 @@ def run_news_pipeline():
 
                 print(f"🤖 뉴스 본문 분석 중 [{title}]", flush=True)
                 start_time = time.time()
-                ai_result = analyze_news_with_gemini(title, full_text)
+                ai_result = analyze_news_with_gpt(title, full_text)
                 execution_time = time.time() - start_time
                 print(f"⏱️ 분석 완료. 소요 시간: {execution_time:.2f}초", flush=True)
 
@@ -1300,6 +1294,112 @@ def get_game_score(
             "grade":                   result.grade,
         }
     }
+
+
+# ─────────────────────────────────────────────────────────────────────
+# [게임 시뮬레이터] AI 회고 리뷰 생성
+# ─────────────────────────────────────────────────────────────────────
+
+@app.get("/api/game/participation/{participation_id}/review")
+def get_game_review(
+    participation_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    p = crud.get_participation(db, participation_id)
+    if not p or p.user_id != current_user.id:
+        return JSONResponse(status_code=404, content={"success": False, "message": "참여 정보를 찾을 수 없습니다."})
+
+    if not p.is_finalized:
+        return JSONResponse(status_code=400, content={"success": False, "message": "아직 종료되지 않은 시뮬레이션입니다."})
+
+    scenario  = p.scenario
+    alloc_rows = crud.get_allocations_by_participation(db, participation_id)
+    result    = crud.get_game_result(db, participation_id)
+
+    # portfolio_value(절대 금액)는 환각 유발 → 수익률(%)만 전달
+    alloc_summary = [
+        {
+            "day":        a.day_index,
+            "allocations": a.allocations or {},
+            "return_rate": round(a.return_rate, 2) if a.return_rate is not None else None,
+            "tags":        a.tags or [],
+            "memo":        a.memo or "",
+        }
+        for a in alloc_rows
+    ]
+
+    score_text = (
+        f"수익률 점수 {result.return_score}/30, "
+        f"시나리오 적응 {result.scenario_score}/30, "
+        f"분산투자 {result.diversity_score}/20, "
+        f"안정성 {result.stability_score}/20, "
+        f"종합 {result.total_score}/100 ({result.grade}), "
+        f"최종 수익률 {result.final_return}%"
+    ) if result else "점수 데이터 없음"
+
+    prompt = f"""당신은 투자 시뮬레이션 코치입니다. 아래 투자자의 7일 시뮬레이션 결과를 분석하여 구체적이고 실용적인 피드백을 제공하세요.
+
+[주의] 응답에 금액(원 단위 숫자)을 절대 언급하지 마세요. 자산 비중(%)과 수익률(%)만 사용하세요.
+
+[시나리오]
+- 이름: {scenario.name} / 테마: {scenario.theme}
+- 투자 가능 자산: {', '.join(scenario.assets or [])}
+- 정답 자산(이번 시나리오에서 성과가 좋은 자산): {', '.join(getattr(scenario, 'correct_assets', None) or [])}
+- 함정 자산(피해야 할 자산): {', '.join(getattr(scenario, 'trap_assets', None) or [])}
+
+[7일 투자 내역]
+- allocations: 각 자산 비중(%)
+- return_rate: 해당 일 기준 누적 수익률(%)
+- tags: 투자자가 직접 선택한 투자 판단 근거 태그 (예: #금리인하_지연, #실적호조 등)
+- memo: 투자자가 직접 입력한 자유 메모 (투자 이유, 전략 등)
+tags와 memo는 투자자의 당일 판단 근거입니다. 이를 반드시 피드백에 반영하세요.
+{json.dumps(alloc_summary, ensure_ascii=False, indent=2)}
+
+[최종 점수]
+{score_text}
+
+반드시 아래 JSON 형식으로만 응답해주세요. 각 항목은 2~3문장, 존댓말로 작성하세요:
+{{
+  "good_judgment": "잘한 판단을 구체적 자산명·일자·비중(%) 근거와 함께 설명 (금액 언급 금지)",
+  "bad_judgment": "아쉬운 판단을 구체적 자산명·일자·비중(%) 근거와 함께 설명 (금액 언급 금지)",
+  "overall_review": "전반적인 투자 스타일 평가와 다음 시즌을 위한 실질적 조언 (금액 언급 금지)"
+}}"""
+
+    # 캐시된 리뷰가 있으면 즉시 반환
+    if result and result.feedback_text:
+        try:
+            cached = json.loads(result.feedback_text)
+            return {"success": True, "data": cached}
+        except Exception:
+            pass  # 파싱 실패 시 재생성
+
+    if not OPENAI_API_KEY:
+        return JSONResponse(status_code=503, content={"success": False, "message": "OpenAI API 키가 설정되지 않았습니다."})
+
+    try:
+        client = OpenAI(api_key=OPENAI_API_KEY)
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+        )
+        review = json.loads(response.choices[0].message.content)
+        data = {
+            "good_judgment":  review.get("good_judgment", ""),
+            "bad_judgment":   review.get("bad_judgment", ""),
+            "overall_review": review.get("overall_review", ""),
+        }
+
+        # DB에 저장 (이후 요청은 캐시 반환)
+        if result:
+            result.feedback_text = json.dumps(data, ensure_ascii=False)
+            db.commit()
+
+        return {"success": True, "data": data}
+    except Exception as e:
+        print(f"🚨 [리뷰 생성 오류]: {e}")
+        return JSONResponse(status_code=500, content={"success": False, "message": "AI 리뷰 생성에 실패했습니다."})
 
 
 # =====================================================================

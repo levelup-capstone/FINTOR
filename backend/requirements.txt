@@ -9,7 +9,7 @@ PyJWT
 finnhub-python
 yfinance==0.2.54
 apscheduler
-google-generativeai
+openai
 beautifulsoup4
 lxml
 rapidfuzz

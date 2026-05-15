@@ -133,3 +133,13 @@ export type GameScore = {
 export async function fetchGameScore(participationId: number): Promise<GameScore | null> {
   return apiCall<GameScore>(`/api/game/participation/${participationId}/score`);
 }
+
+export type GameReview = {
+  good_judgment: string;
+  bad_judgment: string;
+  overall_review: string;
+};
+
+export async function fetchGameReview(participationId: number): Promise<GameReview | null> {
+  return apiCall<GameReview>(`/api/game/participation/${participationId}/review`);
+}
