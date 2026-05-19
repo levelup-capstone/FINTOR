@@ -125,3 +125,23 @@ class GameScoreData(BaseModel):
 class GameScoreResponse(BaseModel):
     success: bool
     data:    Optional[GameScoreData] = None
+
+
+# 6. 퀴즈 관련 스키마
+class QuizQuestionItem(BaseModel):
+    id:          int
+    category:    str
+    quiz_type:   str
+    question:    str
+    options:     List[str]
+
+class QuizSubmitRequest(BaseModel):
+    selected_answer: str
+
+class QuizSubmitResult(BaseModel):
+    is_correct:     bool
+    correct_answer: str
+    explanation:    str
+    weight:         int
+    correct_streak: int
+

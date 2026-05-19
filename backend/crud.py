@@ -2,9 +2,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+import random
 import models, schemas
-from datetime import datetime, timedelta, timezone
-from sqlalchemy.orm import Session
 import models
 
 def get_user_by_kakao_id(db: Session, kakao_id: str):
@@ -331,6 +330,180 @@ def get_rank_for_participation(db: Session, participation_id: int) -> dict | Non
     percentile = round(my_rank / total_count * 100) if total_count > 0 else 100
 
     return {"rank": my_rank, "total": total_count, "percentile": percentile}
+
+
+# =====================================================================
+# 경제 퀴즈
+# =====================================================================
+
+
+def select_weighted_questions(db: Session, user_id: int, n: int = 6) -> list[models.QuizQuestion]:
+    """매일 n개 문제 선택: 새로운 문제 4개 + 틀린 문제(가중치 높은) 2개
+    - 틀린 문제가 2개 미만이면 새로운 문제로 채움
+    - 새로운 문제가 4개 미만이면 가중치 높은 문제로 채움
+    """
+    WRONG_COUNT = 2
+
+    all_questions = db.query(models.QuizQuestion).all()
+    if not all_questions:
+        return []
+
+    progress_map: dict[int, models.QuizUserProgress] = {
+        p.question_id: p
+        for p in db.query(models.QuizUserProgress)
+        .filter(models.QuizUserProgress.user_id == user_id)
+        .all()
+    }
+
+    # 새로운 문제: 한 번도 시도하지 않은 문제
+    new_questions = [q for q in all_questions if q.id not in progress_map]
+    # 틀린 문제: 시도 기록이 있고 weight > 3 (정답 weight는 3 이하)
+    wrong_questions = [
+        q for q in all_questions
+        if q.id in progress_map and progress_map[q.id].weight > 3
+    ]
+    # weight 내림차순 정렬 (가중치 높은 = 가장 많이 틀린 문제 우선)
+    wrong_questions.sort(key=lambda q: progress_map[q.id].weight, reverse=True)
+
+    seen: set[int] = set()
+    selected: list[models.QuizQuestion] = []
+
+    def add_unique(questions: list, count: int, use_weight: bool = False):
+        """questions 중 중복 없이 count개 추가. use_weight=True면 가중치 기반 랜덤."""
+        candidates = [q for q in questions if q.id not in seen]
+        if not candidates:
+            return
+        take = min(count, len(candidates))
+        if use_weight:
+            w = [progress_map[q.id].weight if q.id in progress_map else 10 for q in candidates]
+            chosen = []
+            pool, pool_w = list(candidates), list(w)
+            for _ in range(take):
+                if not pool:
+                    break
+                pick = random.choices(pool, weights=pool_w, k=1)[0]
+                idx = pool.index(pick)
+                chosen.append(pick)
+                pool.pop(idx)
+                pool_w.pop(idx)
+        else:
+            chosen = random.sample(candidates, take)
+        for q in chosen:
+            if q.id not in seen:
+                seen.add(q.id)
+                selected.append(q)
+
+    # 1단계: 틀린 문제 최대 WRONG_COUNT개
+    add_unique(wrong_questions, WRONG_COUNT)
+    wrong_picked = len(selected)
+
+    # 2단계: 새로운 문제로 나머지 채우기 (목표: NEW_COUNT + 부족한 틀린 문제 수)
+    new_target = n - wrong_picked  # 보통 4, 틀린 문제 부족 시 그 이상
+    add_unique(new_questions, new_target)
+
+    # 3단계: 새로운 문제도 부족하면 가중치 높은 문제로 채우기
+    if len(selected) < n:
+        remaining_all = [q for q in all_questions if q.id not in seen]
+        add_unique(remaining_all, n - len(selected), use_weight=True)
+
+    return selected[:n]
+
+
+
+def get_quiz_question_by_id(db: Session, question_id: int) -> models.QuizQuestion | None:
+    return db.query(models.QuizQuestion).filter(models.QuizQuestion.id == question_id).first()
+
+
+def get_quiz_progress(db: Session, user_id: int, question_id: int) -> models.QuizUserProgress | None:
+    return (
+        db.query(models.QuizUserProgress)
+        .filter(
+            models.QuizUserProgress.user_id == user_id,
+            models.QuizUserProgress.question_id == question_id,
+        )
+        .first()
+    )
+
+
+def submit_quiz_answer(
+    db: Session,
+    user_id: int,
+    question_id: int,
+    selected_answer: str,
+    is_correct: bool,
+) -> dict:
+    """답안 제출 → 가중치·streak 갱신 + QuizAttempt 저장 + 세션 is_solved 갱신"""
+    now = datetime.now(timezone.utc)
+
+    # 1) 진행 상태 upsert
+    prog = get_quiz_progress(db, user_id, question_id)
+    if prog is None:
+        prog = models.QuizUserProgress(
+            user_id=user_id,
+            question_id=question_id,
+            weight=10,
+            correct_streak=0,
+            total_attempts=0,
+            total_correct=0,
+            cycle=1,
+        )
+        db.add(prog)
+
+    prog.total_attempts += 1
+    if is_correct:
+        prog.total_correct += 1
+        prog.correct_streak += 1
+        prog.weight = max(1, round(prog.weight * 0.5))
+    else:
+        prog.correct_streak = 0
+        prog.weight = min(30, round(prog.weight * 1.5))
+
+    prog.last_attempted_at = now
+    db.flush()
+
+    # 2) 시도 기록 저장
+    attempt = models.QuizAttempt(
+        user_id=user_id,
+        question_id=question_id,
+        selected_answer=selected_answer,
+        is_correct=is_correct,
+        cycle=prog.cycle,
+    )
+    db.add(attempt)
+
+    db.commit()
+
+    return {
+        "is_correct": is_correct,
+        "weight": prog.weight,
+        "correct_streak": prog.correct_streak,
+        "total_attempts": prog.total_attempts,
+        "total_correct": prog.total_correct,
+    }
+
+
+def get_quiz_status(db: Session, user_id: int) -> dict:
+    """전체 학습 통계"""
+    total_questions = db.query(models.QuizQuestion).count()
+    mastered = (
+        db.query(models.QuizUserProgress)
+        .filter(
+            models.QuizUserProgress.user_id == user_id,
+            models.QuizUserProgress.weight == 1,
+        )
+        .count()
+    )
+    attempted = (
+        db.query(models.QuizUserProgress)
+        .filter(models.QuizUserProgress.user_id == user_id)
+        .count()
+    )
+
+    return {
+        "total_questions": total_questions,
+        "attempted": attempted,
+        "mastered": mastered,
+    }
 
 
 def delete_old_news(db: Session, days_to_keep: int = 3) -> int:

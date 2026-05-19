@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, Float, DateTime, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, String, Text, Float, DateTime, ForeignKey, Boolean, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
@@ -242,3 +242,61 @@ class GameResult(Base):
     created_at              = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     participation = relationship("GameParticipation", back_populates="result")
+
+
+# ──────────────────────────────────────────────
+# 경제 퀴즈
+# ──────────────────────────────────────────────
+
+class QuizQuestion(Base):
+    """퀴즈 문제 저장 (150문제 시드)"""
+    __tablename__ = "quiz_questions"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    category    = Column(String, nullable=False, index=True)
+    quiz_type   = Column(String, nullable=False)               # "ox" / "multiple"
+    question    = Column(Text, nullable=False)
+    options     = Column(JSONB, nullable=False)                # ["O","X"] or ["①..","②..","③..","④.."]
+    answer      = Column(String, nullable=False)
+    explanation = Column(Text, nullable=False)
+    created_at  = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    progress = relationship("QuizUserProgress", back_populates="question", cascade="all, delete-orphan")
+    attempts = relationship("QuizAttempt",       back_populates="question", cascade="all, delete-orphan")
+
+
+class QuizUserProgress(Base):
+    """유저별 문제 학습 상태 (가중치, 연속 정답 등)"""
+    __tablename__ = "quiz_user_progress"
+    __table_args__ = (UniqueConstraint("user_id", "question_id", name="uq_quiz_progress_user_question"),)
+
+    id                = Column(Integer, primary_key=True, index=True)
+    user_id           = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    question_id       = Column(Integer, ForeignKey("quiz_questions.id", ondelete="CASCADE"), nullable=False, index=True)
+    weight            = Column(Integer, default=10, nullable=False)   # 1~30: 높을수록 출제 빈도 증가 (정답 시 *0.5, 오답 시 *1.5)
+    correct_streak    = Column(Integer, default=0,  nullable=False)   # 연속 정답 횟수
+    total_attempts    = Column(Integer, default=0,  nullable=False)
+    total_correct     = Column(Integer, default=0,  nullable=False)
+    cycle             = Column(Integer, default=1,  nullable=False)   # 현재 사이클
+    last_attempted_at = Column(DateTime(timezone=True), nullable=True)
+
+    user     = relationship("User")
+    question = relationship("QuizQuestion", back_populates="progress")
+
+
+class QuizAttempt(Base):
+    """퀴즈 풀이 이력"""
+    __tablename__ = "quiz_attempts"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    user_id         = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    question_id     = Column(Integer, ForeignKey("quiz_questions.id", ondelete="CASCADE"), nullable=False, index=True)
+    selected_answer = Column(String, nullable=False)
+    is_correct      = Column(Boolean, nullable=False)
+    cycle           = Column(Integer, nullable=False, default=1)
+    attempted_at    = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    user     = relationship("User")
+    question = relationship("QuizQuestion", back_populates="attempts")
+
+

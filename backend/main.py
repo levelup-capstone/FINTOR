@@ -24,6 +24,7 @@ import models, schemas, crud
 from database import engine, get_db
 from seed import seed as run_seed
 from game_seed import seed as run_game_seed
+from quiz_seed import seed as run_quiz_seed
 from scoring import calculate_score
 
 # DB 테이블 생성
@@ -622,6 +623,12 @@ def startup_event():
     run_seed()
     # 게임 시나리오 시드 데이터 주입
     run_game_seed()
+    # 퀴즈 문제 시드 데이터 주입
+    db = next(get_db())
+    try:
+        run_quiz_seed(db)
+    finally:
+        db.close()
     # 서버 시작 시 최초 1회 실행 (블로킹 방지를 위해 백그라운드 스레드로)
     threading.Thread(target=collect_and_save_market_data, daemon=True).start()
     threading.Thread(target=run_news_pipeline, daemon=True).start()
@@ -1471,3 +1478,78 @@ def _game_daily_settlement():
         print(f"🚨 [게임 정산 오류]: {e}")
     finally:
         db.close()
+
+
+# =====================================================================
+# [경제 퀴즈]
+# =====================================================================
+
+@app.get("/api/quiz/today")
+def get_today_quiz(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    questions = crud.select_weighted_questions(db, current_user.id, n=6)
+    if not questions:
+        return JSONResponse(status_code=404, content={"success": False, "message": "퀴즈 문제를 불러올 수 없습니다."})
+
+    items = [
+        {
+            "id":        q.id,
+            "category":  q.category,
+            "quiz_type": q.quiz_type,
+            "question":  q.question,
+            "options":   q.options,
+            "is_solved": False,
+        }
+        for q in questions
+    ]
+
+    return {
+        "success": True,
+        "data": {
+            "questions":   items,
+            "today_total": len(items),
+        },
+    }
+
+
+@app.post("/api/quiz/{question_id}/submit")
+def submit_quiz(
+    question_id: int,
+    req: schemas.QuizSubmitRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    question = crud.get_quiz_question_by_id(db, question_id)
+    if not question:
+        return JSONResponse(status_code=404, content={"success": False, "message": "문제를 찾을 수 없습니다."})
+
+    is_correct = req.selected_answer.strip() == question.answer.strip()
+    result = crud.submit_quiz_answer(
+        db,
+        user_id=current_user.id,
+        question_id=question_id,
+        selected_answer=req.selected_answer,
+        is_correct=is_correct,
+    )
+
+    return {
+        "success": True,
+        "data": {
+            "is_correct":     result["is_correct"],
+            "correct_answer": question.answer,
+            "explanation":    question.explanation,
+            "weight":         result["weight"],
+            "correct_streak": result["correct_streak"],
+        },
+    }
+
+
+@app.get("/api/quiz/status")
+def get_quiz_status(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    status = crud.get_quiz_status(db, current_user.id)
+    return {"success": True, "data": status}
