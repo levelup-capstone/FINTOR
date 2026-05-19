@@ -30,16 +30,6 @@ class SurveyCreate(BaseModel):
     monthly_income: str
     investment_goal: str
 
-class AllocationItem(BaseModel):
-    asset: str
-    ratio: int
-
-class RecommendedPortfolio(BaseModel):
-    template_id: int
-    title: str
-    description: Optional[str] = None
-    allocations: List[AllocationItem]
-
 class SurveyResponseData(BaseModel):
     risk_level: int
     risk_label: str
@@ -49,27 +39,7 @@ class SurveyResponse(BaseModel):
     message: Optional[str] = None
     data: Optional[SurveyResponseData] = None
 
-# 3. 포트폴리오(Portfolio) 관련 스키마
-class PortfolioCreate(BaseModel):
-    userid: int
-    template_id: int
-
-class PortfolioDetail(BaseModel):
-    template_id: Optional[int] = None
-    risk_level: Optional[int] = None
-    risk_label: Optional[str] = None
-    title: Optional[str] = None
-    allocations: List[AllocationItem]
-    d_day: int
-
-class PortfolioResponseData(BaseModel):
-    portfolio: PortfolioDetail
-
-class PortfolioResponse(BaseModel):
-    success: bool
-    data: Optional[PortfolioResponseData] = None
-
-# 4. 레벨(Level) 관련 스키마
+# 3. 레벨(Level) 관련 스키마
 class UserLevelResponse(BaseModel):
     success: bool
     data: Optional[dict] = None

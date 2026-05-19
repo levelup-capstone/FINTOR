@@ -22,7 +22,6 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 import models, schemas, crud
 from database import engine, get_db
-from seed import seed as run_seed
 from game_seed import seed as run_game_seed
 from quiz_seed import seed as run_quiz_seed
 from scoring import calculate_score
@@ -619,8 +618,6 @@ def startup_event():
     else:
         print("🏢 운영 모드입니다.")
 
-    # 포트폴리오 템플릿 시드 데이터 주입
-    run_seed()
     # 게임 시나리오 시드 데이터 주입
     run_game_seed()
     # 퀴즈 문제 시드 데이터 주입
@@ -737,7 +734,7 @@ def add_news_view(news_id: int, db: Session = Depends(get_db)):
 
 
 # =====================================================================
-# [포트폴리오 추천] Risk Score 계산 로직
+# [설문조사] 저장 및 성향 반환
 # =====================================================================
 
 RISK_TYPE_SCORE = {"v-low": 1, "low": 4, "high": 8, "v-high": 12}
@@ -749,7 +746,6 @@ GOAL_SCORE = {
     "growth": 3,
 }
 AGE_SCORE = {"under-20": 2, "20y": 2, "30y": 1, "40y": 1, "50y": 0, "over-60": 0}
-# 자산 규모가 클수록 안정 지향 → 점수 차감
 ASSETS_SCORE = {
     "under-500": 2, "500-1000": 1,
     "1000-5000": 0, "5000-1m": 0,
@@ -782,16 +778,6 @@ def score_to_level(score: int) -> int:
     elif score <= 24: return 4
     else:             return 5
 
-
-def recommend_templates(db: Session, risk_level: int, preferred_assets: list) -> list:
-    templates = crud.get_templates_by_risk_level(db, risk_level)
-    user_set = set(preferred_assets)
-    return sorted(templates, key=lambda t: (-len(user_set & set(t.tags)), t.id))[:3]
-
-
-# =====================================================================
-# [설문조사] 저장 및 포트폴리오 추천 반환
-# =====================================================================
 
 @app.post("/api/survey", response_model=schemas.SurveyResponse)
 def submit_survey(
@@ -832,99 +818,6 @@ def submit_survey(
             "success": False,
             "message": "서버 내부 오류로 인해 데이터를 저장하지 못했습니다."
         })
-
-
-# =====================================================================
-# [포트폴리오] 조회 / 생성
-# =====================================================================
-
-@app.get("/api/v1/portfolios")
-def get_portfolio(userid: int, db: Session = Depends(get_db)):
-    user = crud.get_user_by_id(db, user_id=userid)
-    if not user:
-        return JSONResponse(status_code=404, content={
-            "success": False,
-            "error": {"code": "USER_NOT_FOUND", "message": "해당 사용자를 찾을 수 없습니다."}
-        })
-
-    portfolio = crud.get_portfolio_by_user_id(db, user_id=userid)
-    if not portfolio:
-        return JSONResponse(status_code=404, content={
-            "success": False,
-            "error": {"code": "DATA_NOT_FOUND", "message": "포트폴리오 정보가 존재하지 않습니다."}
-        })
-
-    tmpl  = portfolio.template
-    today = datetime.now(KST).date()
-    start = portfolio.created_at.date() if portfolio.created_at else today
-    d_day = (today - start).days
-
-    return {
-        "success": True,
-        "data": {
-            "portfolio": {
-                "template_id": tmpl.id          if tmpl else None,
-                "risk_level":  tmpl.risk_level  if tmpl else None,
-                "risk_label":  RISK_LABELS.get(tmpl.risk_level) if tmpl else None,
-                "title":       tmpl.title       if tmpl else portfolio.name,
-                "allocations": [
-                    {"asset": a.asset, "ratio": a.ratio}
-                    for a in portfolio.allocations
-                ],
-                "d_day": d_day,
-            }
-        }
-    }
-
-
-@app.post("/api/v1/portfolios", status_code=201)
-def create_portfolio(req: schemas.PortfolioCreate, db: Session = Depends(get_db)):
-    user = crud.get_user_by_id(db, user_id=req.userid)
-    if not user:
-        return JSONResponse(status_code=404, content={
-            "success": False,
-            "error": {"code": "USER_NOT_FOUND", "message": "해당 사용자를 찾을 수 없습니다."}
-        })
-
-    template = crud.get_template_by_id(db, template_id=req.template_id)
-    if not template:
-        return JSONResponse(status_code=404, content={
-            "success": False,
-            "error": {"code": "TEMPLATE_NOT_FOUND", "message": "포트폴리오 템플릿을 찾을 수 없습니다."}
-        })
-
-    try:
-        portfolio = crud.create_portfolio(
-            db          = db,
-            user_id     = req.userid,
-            template_id = template.id,
-            profile_id  = template.profile_id,
-            name        = RISK_LABELS.get(template.risk_level, template.title),
-            allocations = template.allocations,
-        )
-    except Exception as e:
-        print(f"🚨 포트폴리오 생성 오류: {str(e)}")
-        return JSONResponse(status_code=500, content={
-            "success": False,
-            "error": {"code": "SERVER_ERROR", "message": "서버 내부 오류가 발생했습니다."}
-        })
-
-    return {
-        "success": True,
-        "data": {
-            "portfolio": {
-                "template_id": template.id,
-                "risk_level":  template.risk_level,
-                "risk_label":  RISK_LABELS.get(template.risk_level),
-                "title":       template.title,
-                "allocations": [
-                    {"asset": a.asset, "ratio": a.ratio}
-                    for a in portfolio.allocations
-                ],
-            }
-        }
-    }
-
 
 
 # =====================================================================

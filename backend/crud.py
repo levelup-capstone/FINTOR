@@ -46,51 +46,6 @@ def upsert_market_index(db: Session, name: str, data: dict, updated_at):
         db.add(row)
     db.commit()
 
-# =====================================================================
-# [포트폴리오] 조회 / 생성
-# =====================================================================
-
-def get_portfolio_by_user_id(db: Session, user_id: int):
-    return db.query(models.Portfolio).filter(models.Portfolio.user_id == user_id).first()
-
-def create_portfolio(db: Session, user_id: int, template_id: int,
-                     profile_id: str, name: str, allocations: list[dict]):
-    existing = get_portfolio_by_user_id(db, user_id)
-    if existing:
-        db.delete(existing)
-        db.flush()
-
-    portfolio = models.Portfolio(
-        user_id     = user_id,
-        template_id = template_id,
-        profile_id  = profile_id,
-        name        = name
-    )
-    db.add(portfolio)
-    db.flush()
-
-    for item in allocations:
-        alloc = models.PortfolioAllocation(
-            portfolio_id = portfolio.id,
-            asset        = item["asset"],
-            ratio        = item["ratio"],
-        )
-        db.add(alloc)
-
-    db.commit()
-    db.refresh(portfolio)
-    return portfolio
-
-def get_template_by_id(db: Session, template_id: int):
-    return db.query(models.PortfolioTemplate).filter(
-        models.PortfolioTemplate.id == template_id
-    ).first()
-
-def get_templates_by_risk_level(db: Session, risk_level: int):
-    return db.query(models.PortfolioTemplate).filter(
-        models.PortfolioTemplate.risk_level == risk_level
-    ).all()
-
 def get_user_level(db: Session, user_id: int):
     return db.query(models.UserLevel).filter(models.UserLevel.user_id == user_id).first()
 
