@@ -1,6 +1,93 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router';
 
+// ─── 시장지수 티커 (뉴스/퀴즈 탭 한정) ────────────────────────────────────
+const TICKER_KEYS = ['SP500', 'NASDAQ100', 'KOSPI', 'KOSDAQ', 'BTC_KRW', 'USD_KRW', 'JPY_KRW'] as const;
+const TICKER_LABEL: Record<string, string> = {
+  SP500: 'S&P 500',
+  NASDAQ100: 'NASDAQ 100',
+  KOSPI: 'KOSPI',
+  KOSDAQ: 'KOSDAQ',
+  BTC_KRW: '비트코인',
+  USD_KRW: 'USD/KRW',
+  JPY_KRW: 'JPY/KRW',
+};
+type TickerItem = { price: number; change_rate: number; change_value: number; source: string };
+
+function formatTickerPrice(key: string, price: number): string {
+  if (key === 'BTC_KRW') return `${(price / 10000).toLocaleString('ko-KR', { maximumFractionDigits: 0 })}만`;
+  if (key === 'USD_KRW' || key === 'JPY_KRW') {
+    return price.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function MarketTicker() {
+  const [data, setData] = useState<Record<string, TickerItem> | null>(null);
+
+  useEffect(() => {
+    const load = () => {
+      fetch('/api/v1/market/indices')
+        .then((r) => r.json())
+        .then((json) => { if (json.success) setData(json.data); })
+        .catch(() => {});
+    };
+    load();
+    const id = setInterval(load, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  if (!data) {
+    return (
+      <div className="border-t border-outline-variant/20 bg-slate-100/60 dark:bg-slate-900/60">
+        <div className="max-w-7xl mx-auto px-6 h-9 flex items-center">
+          <span className="text-xs text-on-surface-variant">시장 지수 로딩 중…</span>
+        </div>
+      </div>
+    );
+  }
+
+  const items = TICKER_KEYS
+    .map((key) => ({ key, item: data[key] }))
+    .filter((x) => x.item != null);
+
+  return (
+    <div className="border-t border-outline-variant/20 bg-slate-100/60 dark:bg-slate-900/60">
+      <div className="max-w-7xl mx-auto px-6 overflow-hidden">
+        <div className="ticker-track flex whitespace-nowrap py-2">
+          {[...items, ...items].map((x, i) => {
+            const isUp = x.item.change_rate >= 0;
+            return (
+              <div key={`${x.key}-${i}`} className="flex items-center gap-2 px-6 text-sm shrink-0">
+                <span className="font-bold text-on-surface">{TICKER_LABEL[x.key]}</span>
+                <span className="tabular-nums text-on-surface-variant">{formatTickerPrice(x.key, x.item.price)}</span>
+                <span className={`tabular-nums font-bold ${isUp ? 'text-error' : 'text-blue-700'}`}>
+                  {isUp ? '▲' : '▼'} {Math.abs(x.item.change_rate).toFixed(2)}%
+                </span>
+                <span className="text-on-surface-variant/40">|</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <style>{`
+        @keyframes ticker-marquee {
+          from { transform: translateX(0); }
+          to   { transform: translateX(-50%); }
+        }
+        .ticker-track {
+          animation: ticker-marquee 10s linear infinite;
+          will-change: transform;
+        }
+        .ticker-track:hover { animation-play-state: paused; }
+        @media (prefers-reduced-motion: reduce) {
+          .ticker-track { animation: none; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
 export function Header() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -122,6 +209,7 @@ export function Header() {
           </div>
         </div>
       </div>
+      <MarketTicker />
     </header>
   );
 }

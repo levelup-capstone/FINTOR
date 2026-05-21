@@ -840,12 +840,16 @@ def get_user_level(user_id: int, db: Session = Depends(get_db)):
     if not user_level:
         user_level = crud.create_user_level(db, user_id=user_id)
 
+    # 설문에 등록된 위험 성향(risk_type)도 함께 반환 (대시보드 인사말 등에서 사용)
+    survey = db.query(models.Survey).filter(models.Survey.user_id == user_id).first()
+
     return {
         "success": True,
         "data": {
             "userId":    user_id,
             "level":     user_level.level,
             "exp":       user_level.exp,
+            "riskType":  survey.risk_type if survey else None,
             "updatedAt": user_level.updated_at.isoformat() if user_level.updated_at else None
         }
     }
