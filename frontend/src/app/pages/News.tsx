@@ -38,6 +38,7 @@ function formatTimeAgo(pubDateStr: string): string {
 
 export function News() {
   const [activeTab, setActiveTab] = useState<"custom" | "all">("custom");
+  const [selectedTag, setSelectedTag] = useState<string>("전체");
   const [apiNews, setApiNews] = useState<ApiNews[]>([]);
   const [popularNews, setPopularNews] = useState<PopularNews[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,7 +68,8 @@ export function News() {
     return () => clearInterval(id);
   }, []);
 
-  const myPortfolioTags = ["비트코인", "금", "반도체", "미국주식", "주식"];
+  // 의미 없는 카테고리는 chip에서 제외
+  const EXCLUDED_TAGS = new Set(["오류", "기타"]);
 
   const getTagColor = (tag: string) => {
     const colors: Record<string, string> = {
@@ -132,9 +134,23 @@ export function News() {
     }
   };
 
+  // 받아온 뉴스에서 실제 존재하는 태그를 빈도순으로 추출 (오류/기타 제외)
+  const tagCounts = new Map<string, number>();
+  for (const n of gridNews) {
+    for (const t of n.tags) {
+      if (!t || EXCLUDED_TAGS.has(t)) continue;
+      tagCounts.set(t, (tagCounts.get(t) ?? 0) + 1);
+    }
+  }
+  const dynamicTags = Array.from(tagCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([tag]) => tag);
+
   const displayedGridNews =
     activeTab === "custom"
-      ? gridNews.filter((news) => news.tags.some((tag) => myPortfolioTags.includes(tag)))
+      ? selectedTag === "전체"
+        ? gridNews.filter((news) => news.tags.some((tag) => !EXCLUDED_TAGS.has(tag)))
+        : gridNews.filter((news) => news.tags.includes(selectedTag))
       : gridNews;
 
   return (
@@ -218,7 +234,7 @@ export function News() {
             }`}
           >
             <Sparkles className={`w-4 h-4 ${activeTab === "custom" ? "fill-primary/20 text-primary" : ""}`} />
-            내 자산 맞춤
+            태그별로 보기
           </button>
           <button
             onClick={() => setActiveTab("all")}
@@ -232,6 +248,36 @@ export function News() {
             전체 뉴스
           </button>
         </div>
+
+        {/* 태그 chip 필터 (태그별로 보기 탭에서만, 실제 뉴스에 존재하는 태그만 동적 생성) */}
+        {activeTab === "custom" && (
+          <div className="flex flex-wrap gap-2 -mt-2">
+            {["전체", ...dynamicTags].map((tag) => {
+              const isSelected = selectedTag === tag;
+              const count = tag === "전체"
+                ? gridNews.filter((n) => n.tags.some((t) => !EXCLUDED_TAGS.has(t))).length
+                : tagCounts.get(tag) ?? 0;
+              return (
+                <button
+                  key={tag}
+                  onClick={() => setSelectedTag(tag)}
+                  className={`px-3 py-1.5 text-sm font-bold rounded-full ring-1 ring-inset transition-all inline-flex items-center gap-1.5 ${
+                    isSelected
+                      ? "bg-primary text-on-primary ring-primary shadow-sm"
+                      : tag === "전체"
+                      ? "bg-surface-container-low text-on-surface-variant ring-surface-container-highest hover:bg-surface-container"
+                      : `${getTagColor(tag)} hover:opacity-80`
+                  }`}
+                >
+                  {tag === "전체" ? "전체" : `#${tag}`}
+                  <span className={`text-xs font-semibold ${isSelected ? "opacity-80" : "opacity-60"}`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {displayedGridNews.length > 0 ? (
