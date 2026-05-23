@@ -794,13 +794,17 @@ def submit_survey(
                 "data": None
             })
 
-        new_survey = models.Survey(user_id=current_user.id, **survey_data.model_dump())
-        db.add(new_survey)
-        db.commit()
-
         score      = calc_risk_score(survey_data)
         risk_level = score_to_level(score)
         risk_label = RISK_LABELS[risk_level]
+
+        new_survey = models.Survey(
+            user_id=current_user.id,
+            risk_level=risk_level,
+            **survey_data.model_dump()
+        )
+        db.add(new_survey)
+        db.commit()
 
         return {
             "success": True,
@@ -849,7 +853,7 @@ def get_user_level(user_id: int, db: Session = Depends(get_db)):
             "userId":    user_id,
             "level":     user_level.level,
             "exp":       user_level.exp,
-            "riskType":  survey.risk_type if survey else None,
+            "riskType":  RISK_LABELS[survey.risk_level] if survey and survey.risk_level else None,
             "updatedAt": user_level.updated_at.isoformat() if user_level.updated_at else None
         }
     }

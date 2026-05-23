@@ -24,6 +24,7 @@ class Survey(Base):
     preferred_period      = Column(String, nullable=False)
     preferred_assets      = Column(JSONB, nullable=False)
     risk_type             = Column(String, nullable=False)
+    risk_level            = Column(Integer, nullable=True)
     investment_assets     = Column(String, nullable=False)
     monthly_income        = Column(String, nullable=False)
     investment_goal       = Column(String, nullable=False)

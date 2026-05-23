@@ -25,14 +25,7 @@ export function Dashboard() {
   const [exp, setExp] = useState<number>(0);
   const [riskType, setRiskType] = useState<string | null>(null);
 
-  // risk_type 코드 → 한글 라벨 (설문에서 받은 위험 성향)
-  const RISK_TYPE_LABEL: Record<string, string> = {
-    'v-low': '안정형',
-    'low': '안정추구형',
-    'high': '적극투자형',
-    'v-high': '공격투자형',
-  };
-  const riskLabel = riskType ? RISK_TYPE_LABEL[riskType] ?? null : null;
+  const riskLabel = riskType ?? null;
 
   // 일일 퀴즈 상태
   const [dailyQuizResult, setDailyQuizResult] = useState<DailyResult | null>(null);
