@@ -8,6 +8,7 @@ export function BottomNav() {
     { label: '시뮬레이터', to: '/dashboard/simulator', icon: 'play_circle' },
     { label: '퀴즈', to: '/dashboard/quiz', icon: 'quiz' },
     { label: '뉴스', to: '/dashboard/news', icon: 'newspaper' },
+    { label: '설정', to: '/dashboard/settings', icon: 'settings' },
   ];
 
   return (

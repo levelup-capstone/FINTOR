@@ -124,3 +124,6 @@ class QuizDailyCompleteRequest(BaseModel):
     streak: int
     results: List[bool]
 
+class NicknameUpdateRequest(BaseModel):
+    nickname: str
+

@@ -1,17 +1,27 @@
+import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router';
+
+function readLoginData() {
+  try {
+    return JSON.parse(localStorage.getItem('loginResult') || 'null')?.data ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export function Sidebar() {
   const location = useLocation();
-  // localStorage에서 로그인 시 저장된 사용자 정보 읽기
-  const loginData = (() => {
-    try {
-      return JSON.parse(localStorage.getItem('loginResult') || 'null')?.data;
-    } catch {
-      return null;
-    }
-  })();
-  const nickname: string = loginData?.nickname ?? '사용자';
-  const profileImage: string | null = loginData?.profileImage ?? null;
+  const [nickname, setNickname] = useState<string>(() => readLoginData()?.nickname ?? '사용자');
+  const [profileImage] = useState<string | null>(() => readLoginData()?.profileImage ?? null);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { nickname: next } = (e as CustomEvent<{ nickname: string }>).detail;
+      setNickname(next);
+    };
+    window.addEventListener('nickname-changed', handler);
+    return () => window.removeEventListener('nickname-changed', handler);
+  }, []);
 
   const menuItems = [
     { label: '대시보드', to: '/dashboard', icon: 'dashboard' },
