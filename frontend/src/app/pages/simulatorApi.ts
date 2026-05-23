@@ -85,6 +85,10 @@ export async function fetchParticipation(participationId: number): Promise<Parti
   return apiCall<ParticipationData>(`/api/game/participation/${participationId}`);
 }
 
+export async function fetchMyParticipation(): Promise<{ participation_id: number; scenario_id: number } | null> {
+  return apiCall<{ participation_id: number; scenario_id: number }>('/api/game/my-participation');
+}
+
 export async function startGame(scenarioId: number): Promise<{ participation_id: number; scenario_id: number } | null> {
   return apiCall(`/api/game/start`, {
     method: 'POST',

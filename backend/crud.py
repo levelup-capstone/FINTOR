@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date as date_type
 from typing import Optional
 import random
 import models, schemas
@@ -454,11 +454,153 @@ def get_quiz_status(db: Session, user_id: int) -> dict:
         .count()
     )
 
+    totals = (
+        db.query(
+            func.sum(models.QuizUserProgress.total_correct).label("total_correct"),
+            func.sum(models.QuizUserProgress.total_attempts).label("total_attempts"),
+        )
+        .filter(models.QuizUserProgress.user_id == user_id)
+        .first()
+    )
+    total_correct = totals.total_correct or 0
+    total_attempts_sum = totals.total_attempts or 0
+    accuracy = round(total_correct / total_attempts_sum * 100, 1) if total_attempts_sum > 0 else 0
+
     return {
         "total_questions": total_questions,
         "attempted": attempted,
         "mastered": mastered,
+        "accuracy": accuracy,
     }
+
+
+def submit_infinite_score(db: Session, user_id: int, score: int, season: int = 1) -> dict:
+    existing = (
+        db.query(models.QuizSeasonScore)
+        .filter(
+            models.QuizSeasonScore.user_id == user_id,
+            models.QuizSeasonScore.season == season,
+        )
+        .first()
+    )
+    if existing is None:
+        entry = models.QuizSeasonScore(
+            user_id=user_id,
+            season=season,
+            best_score=score,
+            updated_at=datetime.now(timezone.utc),
+        )
+        db.add(entry)
+        db.commit()
+        return {"best_score": score}
+    if score > existing.best_score:
+        existing.best_score = score
+        existing.updated_at = datetime.now(timezone.utc)
+        db.commit()
+    return {"best_score": existing.best_score}
+
+
+def get_quiz_ranking(db: Session, user_id: int, season: int = 1) -> dict:
+    top = (
+        db.query(models.QuizSeasonScore, models.User.nickname)
+        .join(models.User, models.QuizSeasonScore.user_id == models.User.id)
+        .filter(models.QuizSeasonScore.season == season)
+        .order_by(models.QuizSeasonScore.best_score.desc())
+        .limit(50)
+        .all()
+    )
+    user_entry = (
+        db.query(models.QuizSeasonScore)
+        .filter(
+            models.QuizSeasonScore.user_id == user_id,
+            models.QuizSeasonScore.season == season,
+        )
+        .first()
+    )
+    my_score = user_entry.best_score if user_entry else 0
+    if user_entry:
+        better_count = (
+            db.query(models.QuizSeasonScore)
+            .filter(
+                models.QuizSeasonScore.season == season,
+                models.QuizSeasonScore.best_score > my_score,
+            )
+            .count()
+        )
+        my_rank = better_count + 1
+    else:
+        my_rank = None
+    total_users = (
+        db.query(models.QuizSeasonScore)
+        .filter(models.QuizSeasonScore.season == season)
+        .count()
+    )
+    entries = [
+        {
+            "rank": i + 1,
+            "nickname": nickname,
+            "score": s.best_score,
+            "is_me": s.user_id == user_id,
+        }
+        for i, (s, nickname) in enumerate(top)
+    ]
+    return {
+        "my_rank": my_rank,
+        "my_score": my_score,
+        "total_users": total_users,
+        "entries": entries,
+    }
+
+
+# =====================================================================
+# 일일 퀴즈 완료
+# =====================================================================
+
+def get_daily_completion(db: Session, user_id: int, date: date_type) -> models.QuizDailyCompletion | None:
+    return (
+        db.query(models.QuizDailyCompletion)
+        .filter(
+            models.QuizDailyCompletion.user_id == user_id,
+            models.QuizDailyCompletion.date == date,
+        )
+        .first()
+    )
+
+
+def get_current_streak(db: Session, user_id: int, today: date_type) -> int:
+    """오늘 완료했으면 오늘 스트릭, 아니면 어제 완료 여부에 따라 반환"""
+    today_c = get_daily_completion(db, user_id, today)
+    if today_c:
+        return today_c.streak
+    yesterday = today - timedelta(days=1)
+    yesterday_c = get_daily_completion(db, user_id, yesterday)
+    return yesterday_c.streak if yesterday_c else 0
+
+
+def save_daily_completion(
+    db: Session,
+    user_id: int,
+    date: date_type,
+    correct_count: int,
+    total: int,
+    streak: int,
+    results: list,
+) -> models.QuizDailyCompletion:
+    existing = get_daily_completion(db, user_id, date)
+    if existing:
+        return existing
+    entry = models.QuizDailyCompletion(
+        user_id=user_id,
+        date=date,
+        correct_count=correct_count,
+        total=total,
+        streak=streak,
+        results=results,
+    )
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return entry
 
 
 def delete_old_news(db: Session, days_to_keep: int = 3) -> int:

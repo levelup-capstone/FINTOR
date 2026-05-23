@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { fetchParticipation, fetchScenarios, fetchGameScore, startGame, type ParticipationData, type ScenarioInfo, type GameScore } from './simulatorApi';
+import { fetchParticipation, fetchMyParticipation, fetchScenarios, fetchGameScore, startGame, type ParticipationData, type ScenarioInfo, type GameScore } from './simulatorApi';
 
 const TOTAL_DAYS = 7;
 
@@ -13,21 +13,31 @@ export function SimulatorOverview() {
   const [starting, setStarting] = useState(false);
 
   useEffect(() => {
+    const loadParticipation = async (id: number) => {
+      const d = await fetchParticipation(id);
+      if (d) {
+        setData(d);
+        if (d.is_finalized) {
+          const score = await fetchGameScore(id);
+          setScoreData(score);
+        }
+      } else {
+        localStorage.removeItem('participationId');
+      }
+    };
+
     const pid = localStorage.getItem('participationId');
     const tasks: Promise<unknown>[] = [
       fetchScenarios().then((s) => { if (s.length > 0) setFirstScenario(s[0]); }),
     ];
     if (pid) {
+      tasks.push(loadParticipation(Number(pid)));
+    } else {
       tasks.push(
-        fetchParticipation(Number(pid)).then(async (d) => {
-          if (d) {
-            setData(d);
-            if (d.is_finalized) {
-              const score = await fetchGameScore(Number(pid));
-              setScoreData(score);
-            }
-          } else {
-            localStorage.removeItem('participationId');
+        fetchMyParticipation().then((r) => {
+          if (r) {
+            localStorage.setItem('participationId', String(r.participation_id));
+            return loadParticipation(r.participation_id);
           }
         })
       );

@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
-import { fetchParticipation, type ParticipationData } from "./simulatorApi";
+import { fetchParticipation, fetchMyParticipation, type ParticipationData } from "./simulatorApi";
+import { fetchQuizStatus } from "./quizApi";
 
-const TODAY_KEY = `fintor_quiz_daily_${new Date().toISOString().slice(0, 10)}`;
 const MAX_EXP = 5000;
 const SIMULATOR_TOTAL_DAYS = 7;
 
@@ -30,6 +30,7 @@ export function Dashboard() {
   // 일일 퀴즈 상태
   const [dailyQuizResult, setDailyQuizResult] = useState<DailyResult | null>(null);
   const [streak, setStreak] = useState<number>(0);
+  const [quizAccuracy, setQuizAccuracy] = useState<number | null>(null);
 
   useEffect(() => {
     const raw = localStorage.getItem('loginResult');
@@ -52,11 +53,17 @@ export function Dashboard() {
         }
       } catch {}
     }
-    try {
-      const r = localStorage.getItem(TODAY_KEY);
-      if (r) setDailyQuizResult(JSON.parse(r));
-    } catch {}
-    setStreak(Number(localStorage.getItem('fintor_quiz_streak') ?? '0'));
+    fetchQuizStatus().then((s) => {
+      if (s) {
+        setQuizAccuracy(s.accuracy);
+        setStreak(s.streak);
+        if (s.today_done && s.today_completion) {
+          const c = s.today_completion;
+          const exp = c.correct_count * 10 + (c.correct_count === c.total ? 20 : 0);
+          setDailyQuizResult({ correctCount: c.correct_count, total: c.total, results: c.results, exp, streak: s.streak });
+        }
+      }
+    });
   }, []);
 
   // ─── 실시간 인기 뉴스 ─────────────────────────────────────────────────
@@ -119,11 +126,24 @@ export function Dashboard() {
   const [pLoading, setPLoading] = useState(true);
 
   useEffect(() => {
+    const load = async (id: number) => {
+      const d = await fetchParticipation(id);
+      if (d) setPData(d);
+      setPLoading(false);
+    };
     const pid = localStorage.getItem('participationId');
-    if (!pid) { setPLoading(false); return; }
-    fetchParticipation(Number(pid))
-      .then((d) => setPData(d))
-      .finally(() => setPLoading(false));
+    if (pid) {
+      load(Number(pid));
+    } else {
+      fetchMyParticipation().then((r) => {
+        if (r) {
+          localStorage.setItem('participationId', String(r.participation_id));
+          load(r.participation_id);
+        } else {
+          setPLoading(false);
+        }
+      });
+    }
   }, []);
 
   // 시뮬레이터 표시 상태: 참여 전 / 오늘 미완료 / 오늘 완료 / 시즌 종료
@@ -141,15 +161,6 @@ export function Dashboard() {
   const todayValue = todayAlloc?.portfolio_value ?? null;
   const todayReturn = todayAlloc?.return_rate ?? null;
 
-  // 누적 통계 (mock)
-  const stats = {
-    completedSeasons: 12,
-    seasonsThisWeek: 2,
-    totalQuizzes: 84,
-    quizAccuracy: 82,
-    infiniteBest: 27,
-    nextInfiniteGoal: 30,
-  };
   // 주간 학습 활동 (mock)
   const weeklyActivity: { day: string; status: DayStatus }[] = [
     { day: '월', status: 'completed' },
@@ -437,7 +448,7 @@ export function Dashboard() {
                 )}
               </div>
               <div>
-                <p className="font-bold text-base text-on-surface">5문제 · 자정에 자동 갱신</p>
+                <p className="font-bold text-base text-on-surface">6문제 · 자정에 자동 갱신</p>
                 <p className="text-xs text-on-surface-variant mt-1">
                   {todayDone ? `+${dailyQuizResult!.exp} EXP 획득` : '오늘 풀이 시작 전'}
                 </p>
@@ -452,7 +463,7 @@ export function Dashboard() {
                     🔥 현재 streak {streak}일
                   </span>
                   <span className="text-sm font-bold text-on-surface-variant tabular-nums">
-                    누적 정답률 {stats.quizAccuracy}%
+                    누적 정답률 {quizAccuracy !== null ? `${quizAccuracy}%` : '—'}
                   </span>
                 </div>
               </div>

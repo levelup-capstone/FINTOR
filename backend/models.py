@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, Float, DateTime, ForeignKey, Boolean, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Text, Float, DateTime, Date, ForeignKey, Boolean, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
@@ -256,5 +256,36 @@ class QuizAttempt(Base):
 
     user     = relationship("User")
     question = relationship("QuizQuestion", back_populates="attempts")
+
+
+class QuizSeasonScore(Base):
+    """무한 퀴즈 시즌별 최고 기록"""
+    __tablename__ = "quiz_season_scores"
+    __table_args__ = (UniqueConstraint("user_id", "season", name="uq_quiz_season_user"),)
+
+    id         = Column(Integer, primary_key=True, index=True)
+    user_id    = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    season     = Column(Integer, nullable=False, default=1)
+    best_score = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime(timezone=True), nullable=True)
+
+    user = relationship("User")
+
+
+class QuizDailyCompletion(Base):
+    """일일 퀴즈 완료 기록 (날짜별 1행)"""
+    __tablename__ = "quiz_daily_completions"
+    __table_args__ = (UniqueConstraint("user_id", "date", name="uq_quiz_daily_user_date"),)
+
+    id            = Column(Integer, primary_key=True, index=True)
+    user_id       = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    date          = Column(Date, nullable=False)                # KST 날짜 (YYYY-MM-DD)
+    correct_count = Column(Integer, nullable=False)
+    total         = Column(Integer, nullable=False)
+    streak        = Column(Integer, nullable=False, default=0)
+    results       = Column(JSONB, nullable=False)               # [true, false, ...]
+    completed_at  = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    user = relationship("User")
 
 

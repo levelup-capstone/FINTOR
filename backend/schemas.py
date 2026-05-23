@@ -115,3 +115,12 @@ class QuizSubmitResult(BaseModel):
     weight:         int
     correct_streak: int
 
+class QuizInfiniteScoreRequest(BaseModel):
+    score: int
+
+class QuizDailyCompleteRequest(BaseModel):
+    correct_count: int
+    total: int
+    streak: int
+    results: List[bool]
+

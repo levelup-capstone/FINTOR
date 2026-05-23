@@ -1,127 +1,61 @@
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
+import {
+  fetchTodayQuiz, submitAnswer, checkAnswer, fetchQuizStatus,
+  fetchInfinitePool, submitInfiniteScore, fetchRanking, completeDailyQuiz, devResetDailyQuiz,
+  type QuizQuestion, type SubmitResult, type RankingData,
+} from './quizApi';
 
-// ─── 임시 mock 데이터 (백엔드 연동 전) ─────────────────────────────────────────
-type QuizItem = {
-  id: number;
-  category: string;
-  question: string;
-  options: string[];
-  answer: number; // index of options
-  explanation: string;
-};
-
-const MOCK_DAILY_QUIZ: QuizItem[] = [
-  {
-    id: 1,
-    category: '거시지표',
-    question: '금리가 인상되면 채권 가격은 일반적으로 어떻게 변할까요?',
-    options: ['변동 없다', '하락한다', '상승한다', '만기에 따라 다르다'],
-    answer: 1,
-    explanation: '기존 채권의 이자율이 새로 발행되는 고금리 채권보다 매력도가 떨어지기 때문에 시장에서 가격이 하락하게 됩니다.',
-  },
-  {
-    id: 2,
-    category: '주식',
-    question: '주가수익비율(PER)이 높다는 것은 무엇을 의미할까요?',
-    options: ['저평가됨', '현재 이익 대비 주가가 비쌈', '안정적인 배당', '거래량이 많음'],
-    answer: 1,
-    explanation: 'PER이 높다는 것은 같은 이익을 내는 회사 대비 주가가 비싸다는 뜻입니다. 시장의 성장 기대가 반영된 결과입니다.',
-  },
-  {
-    id: 3,
-    category: '거시지표',
-    question: '인플레이션이 지속되면 일반적으로 어떤 자산이 유리할까요?',
-    options: ['장기 채권', '실물 자산 (금, 부동산)', '현금', '예금'],
-    answer: 1,
-    explanation: '인플레이션은 화폐 가치를 떨어뜨리므로, 시간이 지나도 가치가 유지되는 실물 자산(금·부동산)이 상대적으로 유리합니다.',
-  },
-  {
-    id: 4,
-    category: '환율',
-    question: '원화 가치가 약세일 때 가장 유리한 업종은?',
-    options: ['수입 의존도가 높은 업종', '수출 비중이 높은 업종', '내수 소비재', '관광 수입 업종'],
-    answer: 1,
-    explanation: '원화가 약세면 해외에서 같은 외화를 받아도 원화 환산 매출이 늘어나기 때문에 수출 업종에 유리합니다.',
-  },
-  {
-    id: 5,
-    category: '리스크',
-    question: '분산 투자의 가장 큰 목적은 무엇일까요?',
-    options: ['수익률 극대화', '리스크 감소', '세금 절감', '거래 수수료 절약'],
-    answer: 1,
-    explanation: '서로 다른 움직임을 보이는 자산에 나눠 투자해 한 자산의 손실을 다른 자산의 이익으로 상쇄, 전체 변동성(리스크)을 낮추는 것이 목적입니다.',
-  },
-];
-
-const MOCK_INFINITE_POOL: QuizItem[] = [
-  ...MOCK_DAILY_QUIZ,
-  {
-    id: 101,
-    category: '거시지표',
-    question: 'CPI(소비자물가지수)가 발표되는 빈도는?',
-    options: ['주간', '월간', '분기', '연간'],
-    answer: 1,
-    explanation: 'CPI는 일반적으로 매월 발표되며, 통계청·중앙은행의 정책 결정에 핵심 지표로 사용됩니다.',
-  },
-  {
-    id: 102,
-    category: '주식',
-    question: '배당락일이란?',
-    options: [
-      '배당금이 입금되는 날',
-      '배당 권리가 사라지는 첫 거래일',
-      '배당이 결정되는 이사회 날',
-      '배당이 지급 발표되는 날',
-    ],
-    answer: 1,
-    explanation: '배당락일 이후 주식을 사면 그 회차 배당을 받을 수 없습니다. 통상 주가는 배당 금액만큼 자연 하락합니다.',
-  },
-];
-
-type RankingEntry = { rank: number; nickname: string; score: number };
-const MOCK_RANKING: RankingEntry[] = Array.from({ length: 100 }, (_, i) => ({
-  rank: i + 1,
-  nickname: ['AlphaGosu', 'WarrenB', 'CoinKing', 'BondMaster', 'BullRunner', 'BearHunter'][i % 6] + `_${i + 1}`,
-  score: Math.max(0, 9500 - i * 80 - Math.floor(Math.random() * 50)),
-}));
-const MOCK_MY_RANK = { rank: 87, nickname: 'me', score: 2840 };
-
-// 일일 퀴즈 streak / 결과는 임시 localStorage 보관
-const TODAY_KEY = `fintor_quiz_daily_${new Date().toISOString().slice(0, 10)}`;
-const STREAK_KEY = 'fintor_quiz_streak';
 
 type DailyResult = {
   correctCount: number;
   total: number;
-  results: boolean[]; // 문제별 정답 여부
+  results: boolean[];
   exp: number;
   streak: number;
 };
 
 // ─── 메인 Quiz 페이지 ─────────────────────────────────────────────────────────
 export function Quiz() {
-  // daily quiz state
   const [dailyResult, setDailyResult] = useState<DailyResult | null>(null);
   const [solving, setSolving] = useState(false);
   const [currentIdx, setCurrentIdx] = useState(0);
-  const [selectedOpt, setSelectedOpt] = useState<number | null>(null);
+  const [selectedOpt, setSelectedOpt] = useState<string | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [sessionResults, setSessionResults] = useState<boolean[]>([]);
   const [countdown, setCountdown] = useState('00:00:00');
 
-  // modals
+  const [questions, setQuestions] = useState<QuizQuestion[]>([]);
+  const [submitResult, setSubmitResult] = useState<SubmitResult | null>(null);
+  const [accuracy, setAccuracy] = useState<number | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [quizLoading, setQuizLoading] = useState(false);
+  const [myRank, setMyRank] = useState<number | null>(null);
+  const [totalUsers, setTotalUsers] = useState(0);
+  const [myBest, setMyBest] = useState(0);
+
   const [infiniteOpen, setInfiniteOpen] = useState(false);
   const [rankingOpen, setRankingOpen] = useState(false);
+  const [cachedQuestions, setCachedQuestions] = useState<QuizQuestion[]>([]);
+  const [currentStreak, setCurrentStreak] = useState(0);
 
-  // 초기 로드: 오늘 푼 결과 확인
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(TODAY_KEY);
-      if (raw) setDailyResult(JSON.parse(raw) as DailyResult);
-    } catch {}
+    fetchTodayQuiz().then((data) => {
+      if (!data) return;
+      setCachedQuestions(data.questions);
+      setCurrentStreak(data.current_streak);
+      if (data.already_completed && data.completion) {
+        const c = data.completion;
+        const exp = c.correct_count * 10 + (c.correct_count === c.total ? 20 : 0);
+        setDailyResult({ correctCount: c.correct_count, total: c.total, results: c.results, exp, streak: c.streak });
+      }
+    });
+
+    fetchQuizStatus().then((s) => { if (s) setAccuracy(s.accuracy); });
+    fetchRanking().then((d) => {
+      if (d) { setMyRank(d.my_rank); setTotalUsers(d.total_users); setMyBest(d.my_score); }
+    });
   }, []);
 
-  // 다음 자정까지 카운트다운
   useEffect(() => {
     const tick = () => {
       const now = new Date();
@@ -139,7 +73,6 @@ export function Quiz() {
     return () => clearInterval(id);
   }, []);
 
-  // 모달 열린 동안 배경 스크롤 잠금
   useEffect(() => {
     const anyOpen = infiniteOpen || rankingOpen;
     if (!anyOpen) return;
@@ -148,72 +81,85 @@ export function Quiz() {
     return () => { document.body.style.overflow = original; };
   }, [infiniteOpen, rankingOpen]);
 
-  const startDaily = () => {
+  const startDaily = async () => {
+    let qs = cachedQuestions;
+    if (qs.length === 0) {
+      setQuizLoading(true);
+      const data = await fetchTodayQuiz();
+      setQuizLoading(false);
+      if (!data || data.questions.length === 0) return;
+      qs = data.questions;
+      setCachedQuestions(qs);
+      setCurrentStreak(data.current_streak);
+    }
+    setQuestions(qs);
     setSolving(true);
     setCurrentIdx(0);
     setSelectedOpt(null);
     setRevealed(false);
     setSessionResults([]);
+    setSubmitResult(null);
   };
 
-  const selectOption = (idx: number) => {
-    if (revealed) return;
-    setSelectedOpt(idx);
+  const selectOption = async (answer: string) => {
+    if (revealed || submitting || !questions[currentIdx]) return;
+    setSelectedOpt(answer);
+    setSubmitting(true);
+    const q = questions[currentIdx];
+    const result = await submitAnswer(q.id, answer);
+    setSubmitResult(result);
     setRevealed(true);
-    const correct = idx === MOCK_DAILY_QUIZ[currentIdx].answer;
-    setSessionResults((prev) => [...prev, correct]);
+    setSubmitting(false);
+    if (result) setSessionResults((prev) => [...prev, result.is_correct]);
   };
 
   const goNext = () => {
-    if (currentIdx + 1 >= MOCK_DAILY_QUIZ.length) {
-      // 완료
+    const total = questions.length;
+    if (currentIdx + 1 >= total) {
       const correctCount = sessionResults.filter(Boolean).length;
-      const prevStreak = Number(localStorage.getItem(STREAK_KEY) ?? '0');
-      const newStreak = correctCount >= 3 ? prevStreak + 1 : 0;
-      const exp = correctCount * 10 + (correctCount === MOCK_DAILY_QUIZ.length ? 20 : 0);
-      const result: DailyResult = {
-        correctCount,
-        total: MOCK_DAILY_QUIZ.length,
-        results: sessionResults,
-        exp,
-        streak: newStreak,
-      };
-      localStorage.setItem(TODAY_KEY, JSON.stringify(result));
-      localStorage.setItem(STREAK_KEY, String(newStreak));
+      const newStreak = correctCount >= Math.ceil(total / 2) ? currentStreak + 1 : 0;
+      const exp = correctCount * 10 + (correctCount === total ? 20 : 0);
+      const result: DailyResult = { correctCount, total, results: sessionResults, exp, streak: newStreak };
       setDailyResult(result);
       setSolving(false);
+      completeDailyQuiz(correctCount, total, newStreak, sessionResults);
     } else {
       setCurrentIdx((i) => i + 1);
       setSelectedOpt(null);
       setRevealed(false);
+      setSubmitResult(null);
     }
   };
 
-  // 헤더 통계: 누적 정답률은 mock (구현 시 백엔드)
-  const streak = dailyResult?.streak ?? Number(localStorage.getItem(STREAK_KEY) ?? '0');
+  const streak = dailyResult?.streak ?? currentStreak;
 
   return (
     <div className="flex flex-col gap-8 max-w-3xl mx-auto w-full">
-      {/* SECTION 1: 오늘의 퀴즈 챌린지 */}
       <section>
-        {!dailyResult && !solving && <DailyStart streak={streak} onStart={startDaily} />}
-        {solving && (
+        {!dailyResult && !solving && (
+          <DailyStart streak={streak} accuracy={accuracy} onStart={startDaily} loading={quizLoading} />
+        )}
+        {solving && questions[currentIdx] && (
           <DailySolving
-            quiz={MOCK_DAILY_QUIZ[currentIdx]}
+            quiz={questions[currentIdx]}
             index={currentIdx}
-            total={MOCK_DAILY_QUIZ.length}
+            total={questions.length}
             selectedOpt={selectedOpt}
             revealed={revealed}
+            submitting={submitting}
+            submitResult={submitResult}
             onSelect={selectOption}
             onNext={goNext}
-            isLast={currentIdx + 1 >= MOCK_DAILY_QUIZ.length}
+            isLast={currentIdx + 1 >= questions.length}
           />
         )}
         {dailyResult && !solving && <DailyFinished result={dailyResult} countdown={countdown} />}
       </section>
 
-      {/* SECTION 2: 시즌 챌린지 — 단일 카드 (도전 + 랭킹 진입) */}
       <SeasonChallengeCard
+        myRank={myRank}
+        totalUsers={totalUsers}
+        myBest={myBest}
         onStart={() => setInfiniteOpen(true)}
         onRanking={() => setRankingOpen(true)}
       />
@@ -221,9 +167,9 @@ export function Quiz() {
       {/* [DEV ONLY] 일일 퀴즈 초기화 버튼 - 테스트 전용, 배포 전 제거 필요 */}
       <div className="flex justify-center pt-2">
         <button
-          onClick={() => {
+          onClick={async () => {
             if (!confirm('[DEV] 오늘의 일일 퀴즈 진행 기록을 초기화하시겠습니까?')) return;
-            localStorage.removeItem(TODAY_KEY);
+            await devResetDailyQuiz(); // TODO: 배포 전 제거
             setDailyResult(null);
             setSolving(false);
             setCurrentIdx(0);
@@ -239,15 +185,21 @@ export function Quiz() {
         </button>
       </div>
 
-      {/* 모달들 */}
-      {infiniteOpen && <InfiniteModal onClose={() => setInfiniteOpen(false)} />}
+      {infiniteOpen && <InfiniteModal onClose={() => setInfiniteOpen(false)} onBestScore={(best) => setMyBest(best)} />}
       {rankingOpen && <RankingModal onClose={() => setRankingOpen(false)} />}
     </div>
   );
 }
 
 // ─── 일일 퀴즈: 시작 전 ──────────────────────────────────────────────────────
-function DailyStart({ streak, onStart }: { streak: number; onStart: () => void }) {
+function DailyStart({
+  streak, accuracy, onStart, loading,
+}: {
+  streak: number;
+  accuracy: number | null;
+  onStart: () => void;
+  loading: boolean;
+}) {
   return (
     <div className="bg-surface-container-lowest rounded-2xl shadow-sm p-6 flex flex-col border border-outline-variant/30">
       <div className="text-center mb-6">
@@ -255,7 +207,7 @@ function DailyStart({ streak, onStart }: { streak: number; onStart: () => void }
           <span className="material-symbols-outlined" style={{ fontVariationSettings: '"FILL" 1' }}>quiz</span>
         </div>
         <h2 className="text-2xl md:text-3xl font-black tracking-tight text-on-surface mb-2">오늘의 퀴즈 챌린지</h2>
-        <p className="text-sm font-medium text-on-surface-variant">매일 새로운 5문제 · 자정에 자동 갱신</p>
+        <p className="text-sm font-medium text-on-surface-variant">매일 새로운 6문제 · 자정에 자동 갱신</p>
       </div>
       <div className="flex flex-col sm:flex-row gap-3 mb-6">
         <div className="flex-1 bg-surface-container-low rounded-xl p-4 flex items-center justify-center gap-3">
@@ -269,15 +221,18 @@ function DailyStart({ streak, onStart }: { streak: number; onStart: () => void }
           <span className="material-symbols-outlined text-[#1A237E]">pie_chart</span>
           <div className="flex flex-col">
             <span className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">누적 정답률</span>
-            <span className="text-lg font-bold text-on-surface tabular-nums">82.4%</span>
+            <span className="text-lg font-bold text-on-surface tabular-nums">
+              {accuracy !== null ? `${accuracy}%` : '—'}
+            </span>
           </div>
         </div>
       </div>
       <button
         onClick={onStart}
-        className="w-full bg-[#1A237E] text-white font-bold text-base py-4 rounded-xl shadow-sm hover:bg-[#1f2a8c] transition-colors"
+        disabled={loading}
+        className="w-full bg-[#1A237E] text-white font-bold text-base py-4 rounded-xl shadow-sm hover:bg-[#1f2a8c] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
       >
-        오늘의 퀴즈 풀기
+        {loading ? '문제 불러오는 중...' : '오늘의 퀴즈 풀기'}
       </button>
     </div>
   );
@@ -285,24 +240,23 @@ function DailyStart({ streak, onStart }: { streak: number; onStart: () => void }
 
 // ─── 일일 퀴즈: 풀이 중 ─────────────────────────────────────────────────────
 function DailySolving({
-  quiz,
-  index,
-  total,
-  selectedOpt,
-  revealed,
-  onSelect,
-  onNext,
-  isLast,
+  quiz, index, total, selectedOpt, revealed, submitting, submitResult, onSelect, onNext, isLast,
 }: {
-  quiz: QuizItem;
+  quiz: QuizQuestion;
   index: number;
   total: number;
-  selectedOpt: number | null;
+  selectedOpt: string | null;
   revealed: boolean;
-  onSelect: (idx: number) => void;
+  submitting: boolean;
+  submitResult: SubmitResult | null;
+  onSelect: (answer: string) => void;
   onNext: () => void;
   isLast: boolean;
 }) {
+  const shuffledOptions = useMemo(
+    () => quiz.quiz_type === 'multiple' ? [...quiz.options].sort(() => Math.random() - 0.5) : quiz.options,
+    [quiz.id],
+  );
   const progressPct = Math.round(((index + (revealed ? 1 : 0)) / total) * 100);
   return (
     <div className="bg-surface-container-lowest rounded-2xl shadow-sm p-6 flex flex-col border border-outline-variant/30">
@@ -319,14 +273,16 @@ function DailySolving({
       </div>
       <h3 className="text-lg md:text-xl font-bold text-on-surface mb-6 leading-snug">{quiz.question}</h3>
       <div className="flex flex-col gap-3 mb-6">
-        {quiz.options.map((opt, i) => {
-          const isSelected = selectedOpt === i;
-          const isCorrect = quiz.answer === i;
+        {shuffledOptions.map((opt, i) => {
+          const isSelected = opt === selectedOpt;
+          const isCorrect = revealed && submitResult ? opt === submitResult.correct_answer : false;
           const isWrong = revealed && isSelected && !isCorrect;
           let cls = 'w-full text-left p-4 rounded-xl border-2 font-medium text-base transition-all flex justify-between items-center ';
           if (!revealed) {
             cls += isSelected
               ? 'border-[#1A237E] bg-[#1A237E]/10 text-[#1A237E] font-bold'
+              : submitting
+              ? 'border-outline-variant/40 text-on-surface opacity-60 cursor-not-allowed'
               : 'border-outline-variant/40 text-on-surface hover:border-[#1A237E]/40 hover:bg-[#1A237E]/5 cursor-pointer';
           } else {
             if (isCorrect) cls += 'border-emerald-500 bg-emerald-50 text-emerald-700 font-bold';
@@ -334,16 +290,13 @@ function DailySolving({
             else cls += 'border-outline-variant/30 text-on-surface-variant opacity-60';
           }
           return (
-            <button key={i} onClick={() => onSelect(i)} disabled={revealed} className={cls}>
+            <button key={i} onClick={() => onSelect(opt)} disabled={revealed || submitting} className={cls}>
               <span>
                 <span className="mr-2 text-on-surface-variant">{i + 1}.</span>
                 {opt}
               </span>
               {revealed && isCorrect && (
-                <span
-                  className="material-symbols-outlined text-emerald-600 text-[20px]"
-                  style={{ fontVariationSettings: '"FILL" 1' }}
-                >
+                <span className="material-symbols-outlined text-emerald-600 text-[20px]" style={{ fontVariationSettings: '"FILL" 1' }}>
                   check_circle
                 </span>
               )}
@@ -354,7 +307,7 @@ function DailySolving({
           );
         })}
       </div>
-      {revealed && (
+      {revealed && submitResult && (
         <div className="bg-surface-container-low rounded-xl p-4 flex gap-3 items-start mb-6">
           <span
             className="material-symbols-outlined text-[#1A237E] mt-0.5 flex-shrink-0"
@@ -364,27 +317,23 @@ function DailySolving({
           </span>
           <div>
             <p className="text-sm font-bold text-on-surface mb-1">
-              정답: {quiz.options[quiz.answer]}
+              정답: {submitResult.correct_answer}
             </p>
-            <p className="text-sm text-on-surface-variant leading-relaxed">{quiz.explanation}</p>
+            <p className="text-sm text-on-surface-variant leading-relaxed">{submitResult.explanation}</p>
           </div>
         </div>
       )}
       <button
         onClick={onNext}
-        disabled={!revealed}
+        disabled={!revealed || submitting}
         className="w-full bg-[#1A237E] text-white font-bold text-base py-4 rounded-xl shadow-sm hover:bg-[#1f2a8c] transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
       >
-        {isLast ? (
-          <>
-            결과 보기
-            <span className="material-symbols-outlined text-[18px]">flag</span>
-          </>
+        {submitting ? (
+          <>채점 중...</>
+        ) : isLast ? (
+          <>결과 보기<span className="material-symbols-outlined text-[18px]">flag</span></>
         ) : (
-          <>
-            다음 문제
-            <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
-          </>
+          <>다음 문제<span className="material-symbols-outlined text-[18px]">arrow_forward</span></>
         )}
       </button>
     </div>
@@ -419,9 +368,7 @@ function DailyFinished({ result, countdown }: { result: DailyResult; countdown: 
           <div
             key={i}
             className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-sm ${
-              isCorrect
-                ? 'bg-emerald-100 text-emerald-700'
-                : 'bg-red-100 text-red-600'
+              isCorrect ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'
             }`}
           >
             {isCorrect ? 'O' : 'X'}
@@ -436,18 +383,18 @@ function DailyFinished({ result, countdown }: { result: DailyResult; countdown: 
   );
 }
 
-// ─── 시즌 챌린지 카드 (도전 시작 + 랭킹 보기 진입) ─────────────────────────
+// ─── 시즌 챌린지 카드 ─────────────────────────────────────────────────────────
 function SeasonChallengeCard({
-  onStart,
-  onRanking,
+  myRank, totalUsers, myBest, onStart, onRanking,
 }: {
+  myRank: number | null;
+  totalUsers: number;
+  myBest: number;
   onStart: () => void;
   onRanking: () => void;
 }) {
-  const myBest = Number(localStorage.getItem('fintor_infinite_best') ?? '0');
   return (
     <div className="bg-surface-container-low rounded-2xl border border-outline-variant/50 p-6 md:p-8 shadow-sm">
-      {/* 헤더 */}
       <div className="mb-6">
         <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
           <div className="flex items-center gap-2">
@@ -460,7 +407,7 @@ function SeasonChallengeCard({
             <h2 className="text-2xl md:text-3xl font-black tracking-tight text-on-surface">시즌 챌린지</h2>
           </div>
           <span className="bg-[#1A237E]/10 text-[#1A237E] text-xs font-bold uppercase tracking-widest px-3 py-1 rounded-full">
-            SEASON 3 · 5일 남음
+            SEASON 1
           </span>
         </div>
         <p className="text-sm font-medium text-on-surface-variant">
@@ -468,7 +415,6 @@ function SeasonChallengeCard({
         </p>
       </div>
 
-      {/* 통계 2개 */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <div className="bg-surface-container-lowest rounded-xl p-4 flex items-center gap-4 border border-outline-variant/50">
           <div className="bg-surface-variant p-2 rounded-full flex items-center justify-center flex-shrink-0">
@@ -486,13 +432,12 @@ function SeasonChallengeCard({
           <div className="min-w-0">
             <div className="text-sm font-medium text-on-surface-variant mb-0.5">현재 내 순위</div>
             <div className="text-base font-bold text-[#1A237E] tabular-nums">
-              {MOCK_MY_RANK.rank}위 / {MOCK_RANKING.length.toLocaleString()}명
+              {myRank !== null ? `${myRank}위` : '—'} / {totalUsers > 0 ? `${totalUsers}명` : '—'}
             </div>
           </div>
         </div>
       </div>
 
-      {/* 액션 버튼 2개 */}
       <div className="flex flex-col sm:flex-row gap-3">
         <button
           onClick={onStart}
@@ -514,37 +459,77 @@ function SeasonChallengeCard({
 }
 
 // ─── 무한 챌린지 모달 ────────────────────────────────────────────────────────
-function InfiniteModal({ onClose }: { onClose: () => void }) {
-  const [pool] = useState(() => [...MOCK_INFINITE_POOL].sort(() => Math.random() - 0.5));
+function InfiniteModal({ onClose, onBestScore }: { onClose: () => void; onBestScore: (best: number) => void }) {
+  const [pool, setPool] = useState<QuizQuestion[]>([]);
+  const [poolLoading, setPoolLoading] = useState(true);
   const [idx, setIdx] = useState(0);
   const [streak, setStreak] = useState(0);
-  const [selectedOpt, setSelectedOpt] = useState<number | null>(null);
+  const [selectedOpt, setSelectedOpt] = useState<string | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [finished, setFinished] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitResult, setSubmitResult] = useState<SubmitResult | null>(null);
 
-  const current = pool[idx % pool.length];
+  useEffect(() => {
+    fetchInfinitePool().then((qs) => {
+      if (qs && qs.length > 0) setPool([...qs].sort(() => Math.random() - 0.5));
+      setPoolLoading(false);
+    });
+  }, []);
 
-  const select = (i: number) => {
-    if (revealed) return;
-    setSelectedOpt(i);
+  const current = pool[idx % Math.max(pool.length, 1)];
+
+  const shuffledOptions = useMemo(
+    () => current ? (current.quiz_type === 'multiple' ? [...current.options].sort(() => Math.random() - 0.5) : current.options) : [],
+    [current?.id],
+  );
+
+  const select = async (opt: string) => {
+    if (revealed || submitting || !current) return;
+    setSelectedOpt(opt);
+    setSubmitting(true);
+    const result = await checkAnswer(current.id, opt);
+    setSubmitResult(result);
     setRevealed(true);
-    if (i === current.answer) {
+    setSubmitting(false);
+    if (result?.is_correct) {
       setStreak((s) => s + 1);
     } else {
-      // 즉시 종료
-      setTimeout(() => {
-        const best = Number(localStorage.getItem('fintor_infinite_best') ?? '0');
-        if (streak > best) localStorage.setItem('fintor_infinite_best', String(streak));
+      const finalStreak = streak;
+      setTimeout(async () => {
+        const result = await submitInfiniteScore(finalStreak);
+        if (result) onBestScore(result.best_score);
         setFinished(true);
       }, 1200);
     }
   };
 
   const next = () => {
-    setIdx((i) => i + 1);
     setSelectedOpt(null);
     setRevealed(false);
+    setSubmitResult(null);
+    if (idx + 1 >= pool.length) {
+      setPoolLoading(true);
+      setIdx(0);
+      fetchInfinitePool().then((qs) => {
+        if (qs && qs.length > 0) setPool([...qs].sort(() => Math.random() - 0.5));
+        setPoolLoading(false);
+      });
+    } else {
+      setIdx((i: number) => i + 1);
+    }
   };
+
+  if (poolLoading) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+        <div className="bg-surface-container-lowest rounded-2xl shadow-xl w-full max-w-2xl p-12 flex flex-col items-center gap-4">
+          <span className="material-symbols-outlined text-[#1A237E] text-[48px] animate-pulse">all_inclusive</span>
+          <p className="text-base font-bold text-on-surface">문제 불러오는 중...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -567,66 +552,67 @@ function InfiniteModal({ onClose }: { onClose: () => void }) {
 
         {!finished ? (
           <div className="p-6 flex flex-col gap-5">
-            {/* 연속 정답 카운터 */}
             <div className="flex flex-col items-center py-2">
               <span className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-1">
                 현재 연속 정답
               </span>
               <span className="text-5xl font-black tracking-tight text-[#1A237E] tabular-nums">{streak}</span>
             </div>
-
-            {/* 문제 */}
-            <div className="flex flex-col gap-4">
-              <span className="self-start bg-[#1A237E]/10 text-[#1A237E] text-xs font-bold uppercase tracking-widest px-3 py-1 rounded-full">
-                {current.category}
-              </span>
-              <h3 className="text-lg md:text-xl font-bold text-on-surface leading-snug">{current.question}</h3>
-              <div className="flex flex-col gap-3">
-                {current.options.map((opt, i) => {
-                  const isSelected = selectedOpt === i;
-                  const isCorrect = current.answer === i;
-                  const isWrong = revealed && isSelected && !isCorrect;
-                  let cls = 'w-full text-left p-4 rounded-xl border-2 font-medium text-base transition-all flex justify-between items-center ';
-                  if (!revealed) {
-                    cls += isSelected
-                      ? 'border-[#1A237E] bg-[#1A237E]/10 text-[#1A237E] font-bold'
-                      : 'border-outline-variant/40 text-on-surface hover:border-[#1A237E]/40 hover:bg-[#1A237E]/5 cursor-pointer';
-                  } else {
-                    if (isCorrect) cls += 'border-emerald-500 bg-emerald-50 text-emerald-700 font-bold';
-                    else if (isWrong) cls += 'border-red-400 bg-red-50 text-red-600';
-                    else cls += 'border-outline-variant/30 text-on-surface-variant opacity-60';
-                  }
-                  return (
-                    <button key={i} onClick={() => select(i)} disabled={revealed} className={cls}>
-                      <span>
-                        <span className="mr-2 text-on-surface-variant">{i + 1}.</span>
-                        {opt}
-                      </span>
-                      {revealed && isCorrect && (
-                        <span
-                          className="material-symbols-outlined text-emerald-600 text-[20px]"
-                          style={{ fontVariationSettings: '"FILL" 1' }}
-                        >
-                          check_circle
+            {current && (
+              <div className="flex flex-col gap-4">
+                <span className="self-start bg-[#1A237E]/10 text-[#1A237E] text-xs font-bold uppercase tracking-widest px-3 py-1 rounded-full">
+                  {current.category}
+                </span>
+                <h3 className="text-lg md:text-xl font-bold text-on-surface leading-snug">{current.question}</h3>
+                <div className="flex flex-col gap-3">
+                  {shuffledOptions.map((opt, i) => {
+                    const isSelected = opt === selectedOpt;
+                    const isCorrect = revealed && submitResult ? opt === submitResult.correct_answer : false;
+                    const isWrong = revealed && isSelected && !isCorrect;
+                    let cls = 'w-full text-left p-4 rounded-xl border-2 font-medium text-base transition-all flex justify-between items-center ';
+                    if (!revealed) {
+                      cls += isSelected
+                        ? 'border-[#1A237E] bg-[#1A237E]/10 text-[#1A237E] font-bold'
+                        : submitting
+                        ? 'border-outline-variant/40 text-on-surface opacity-60 cursor-not-allowed'
+                        : 'border-outline-variant/40 text-on-surface hover:border-[#1A237E]/40 hover:bg-[#1A237E]/5 cursor-pointer';
+                    } else {
+                      if (isCorrect) cls += 'border-emerald-500 bg-emerald-50 text-emerald-700 font-bold';
+                      else if (isWrong) cls += 'border-red-400 bg-red-50 text-red-600';
+                      else cls += 'border-outline-variant/30 text-on-surface-variant opacity-60';
+                    }
+                    return (
+                      <button key={i} onClick={() => select(opt)} disabled={revealed || submitting} className={cls}>
+                        <span>
+                          <span className="mr-2 text-on-surface-variant">{i + 1}.</span>
+                          {opt}
                         </span>
-                      )}
-                      {revealed && isWrong && (
-                        <span className="material-symbols-outlined text-red-500 text-[20px]">cancel</span>
-                      )}
-                    </button>
-                  );
-                })}
+                        {revealed && isCorrect && (
+                          <span
+                            className="material-symbols-outlined text-emerald-600 text-[20px]"
+                            style={{ fontVariationSettings: '"FILL" 1' }}
+                          >
+                            check_circle
+                          </span>
+                        )}
+                        {revealed && isWrong && (
+                          <span className="material-symbols-outlined text-red-500 text-[20px]">cancel</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                {revealed && submitResult?.is_correct && (
+                  <button
+                    onClick={next}
+                    className="w-full bg-[#1A237E] text-white font-bold text-base py-3 rounded-xl hover:bg-[#1f2a8c] transition-colors flex items-center justify-center gap-2"
+                  >
+                    다음 문제
+                    <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+                  </button>
+                )}
               </div>
-              {revealed && selectedOpt === current.answer && (
-                <button
-                  onClick={next}
-                  className="w-full bg-[#1A237E] text-white font-bold text-base py-3 rounded-xl hover:bg-[#1f2a8c] transition-colors flex items-center justify-center gap-2"
-                >
-                  다음 문제
-                  <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
-                </button>
-              )}
-            </div>
+            )}
           </div>
         ) : (
           <div className="p-8 flex flex-col items-center text-center">
@@ -641,6 +627,12 @@ function InfiniteModal({ onClose }: { onClose: () => void }) {
                   setSelectedOpt(null);
                   setRevealed(false);
                   setFinished(false);
+                  setSubmitResult(null);
+                  setPoolLoading(true);
+                  fetchInfinitePool().then((qs) => {
+                    if (qs && qs.length > 0) setPool([...qs].sort(() => Math.random() - 0.5));
+                    setPoolLoading(false);
+                  });
                 }}
                 className="flex-1 border-2 border-[#1A237E] text-[#1A237E] font-bold text-base py-3 rounded-xl hover:bg-[#1A237E]/5 transition-colors"
               >
@@ -662,6 +654,13 @@ function InfiniteModal({ onClose }: { onClose: () => void }) {
 
 // ─── 랭킹 모달 ──────────────────────────────────────────────────────────────
 function RankingModal({ onClose }: { onClose: () => void }) {
+  const [data, setData] = useState<RankingData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchRanking().then((d) => { setData(d); setLoading(false); });
+  }, []);
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 pb-24 md:p-6 md:pb-6"
@@ -674,13 +673,7 @@ function RankingModal({ onClose }: { onClose: () => void }) {
         {/* 헤더 */}
         <div className="px-6 py-5 border-b border-outline-variant/30 flex justify-between items-start flex-shrink-0">
           <div>
-            <h2 className="text-2xl md:text-3xl font-black tracking-tight text-on-surface">시즌 3 랭킹</h2>
-            <div className="flex items-center gap-2 mt-2">
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-widest bg-red-50 text-red-700">
-                D-5
-              </span>
-              <p className="text-sm text-on-surface-variant">남은 일수 5일</p>
-            </div>
+            <h2 className="text-2xl md:text-3xl font-black tracking-tight text-on-surface">시즌 1 랭킹</h2>
           </div>
           <button
             onClick={onClose}
@@ -691,96 +684,116 @@ function RankingModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        {/* 내 순위 하이라이트 (상단 고정) */}
-        <div className="px-6 pt-4 pb-2 flex-shrink-0">
-          <div className="bg-[#1A237E] text-white rounded-xl p-4 flex items-center justify-between shadow-sm relative overflow-hidden">
-            <div className="absolute right-0 top-0 w-32 h-32 bg-indigo-300 opacity-20 rounded-full blur-2xl transform translate-x-1/2 -translate-y-1/2 pointer-events-none" />
-            <div className="flex items-center gap-4 relative z-10">
-              <div className="flex flex-col items-center justify-center min-w-[40px]">
-                <span className="text-sm font-bold text-white/60 tabular-nums">{MOCK_MY_RANK.rank}위</span>
-              </div>
-              <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0 border border-white/20">
-                <span
-                  className="material-symbols-outlined text-white"
-                  style={{ fontVariationSettings: '"FILL" 1' }}
-                >
-                  emoji_events
-                </span>
-              </div>
-              <div className="flex flex-col">
-                <span className="text-base font-bold">{MOCK_MY_RANK.nickname}</span>
-                <span className="text-xs font-bold uppercase tracking-widest text-white/60 mt-0.5">내 순위</span>
-              </div>
-            </div>
-            <div className="flex items-baseline gap-1 relative z-10">
-              <span className="text-2xl font-black tabular-nums">{MOCK_MY_RANK.score.toLocaleString()}</span>
-              <span className="text-sm text-white/60">점</span>
-            </div>
+        {loading ? (
+          <div className="flex-1 flex items-center justify-center py-12">
+            <span className="material-symbols-outlined text-[#1A237E] text-[48px] animate-pulse">leaderboard</span>
           </div>
-        </div>
-
-        {/* 랭킹 리스트 */}
-        <div className="flex-1 overflow-y-auto px-4 pb-6 pt-2 space-y-1">
-          {MOCK_RANKING.map((e, i) => {
-            const isTop3 = i < 3;
-            const trophyColor = i === 0 ? 'text-yellow-500' : i === 1 ? 'text-slate-400' : 'text-amber-700';
-            const avatarStyle =
-              i === 0
-                ? 'bg-yellow-50 text-yellow-700'
-                : i === 1
-                ? 'bg-slate-100 text-slate-600'
-                : i === 2
-                ? 'bg-amber-50 text-amber-700'
-                : 'bg-surface-variant text-on-surface-variant';
-            const scoreStyle =
-              i === 0
-                ? 'text-yellow-600 font-bold'
-                : i === 1
-                ? 'text-slate-600 font-bold'
-                : i === 2
-                ? 'text-amber-700 font-bold'
-                : 'text-on-surface-variant font-semibold';
-            return (
-              <Fragment key={e.rank}>
-                <div className="flex items-center justify-between p-3 rounded-xl hover:bg-surface-container-low transition-colors mx-2 group">
-                  <div className="flex items-center gap-4 min-w-0">
-                    <div className="w-8 flex justify-center flex-shrink-0">
-                      {isTop3 ? (
-                        <span
-                          className={`material-symbols-outlined ${trophyColor} transform group-hover:scale-110 transition-transform`}
-                          style={{
-                            fontVariationSettings: '"FILL" 1',
-                            fontSize: i === 0 ? '28px' : i === 1 ? '26px' : '24px',
-                          }}
-                        >
-                          emoji_events
-                        </span>
-                      ) : (
-                        <span className="text-base font-bold text-on-surface-variant tabular-nums">{e.rank}</span>
-                      )}
-                    </div>
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${avatarStyle}`}>
-                      <span className="material-symbols-outlined text-[18px]">person</span>
-                    </div>
-                    <span
-                      className={`truncate ${isTop3 ? 'text-lg font-bold text-on-surface' : 'text-base font-medium text-on-surface'}`}
-                    >
-                      {e.nickname}
+        ) : !data || data.entries.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center py-12 gap-3">
+            <span className="material-symbols-outlined text-on-surface-variant text-[48px]">emoji_events</span>
+            <p className="text-base font-bold text-on-surface-variant">아직 참여자가 없습니다</p>
+            <p className="text-sm text-on-surface-variant/70">무한 퀴즈에 도전해 첫 번째 순위를 차지하세요!</p>
+          </div>
+        ) : (
+          <>
+            {/* 내 순위 하이라이트 */}
+            <div className="px-6 pt-4 pb-2 flex-shrink-0">
+              <div className="bg-[#1A237E] text-white rounded-xl p-4 flex items-center justify-between shadow-sm relative overflow-hidden">
+                <div className="absolute right-0 top-0 w-32 h-32 bg-indigo-300 opacity-20 rounded-full blur-2xl transform translate-x-1/2 -translate-y-1/2 pointer-events-none" />
+                <div className="flex items-center gap-4 relative z-10">
+                  <div className="flex flex-col items-center justify-center min-w-[40px]">
+                    <span className="text-sm font-bold text-white/60 tabular-nums">
+                      {data.my_rank !== null ? `${data.my_rank}위` : '—'}
                     </span>
                   </div>
-                  <span className={`text-base tabular-nums whitespace-nowrap ${scoreStyle}`}>
-                    {e.score.toLocaleString()}점
-                  </span>
-                </div>
-                {i === 2 && (
-                  <div className="py-2 px-4">
-                    <div className="h-px bg-outline-variant/40 w-full" />
+                  <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0 border border-white/20">
+                    <span
+                      className="material-symbols-outlined text-white"
+                      style={{ fontVariationSettings: '"FILL" 1' }}
+                    >
+                      emoji_events
+                    </span>
                   </div>
-                )}
-              </Fragment>
-            );
-          })}
-        </div>
+                  <div className="flex flex-col">
+                    <span className="text-base font-bold">내 기록</span>
+                    <span className="text-xs font-bold uppercase tracking-widest text-white/60 mt-0.5">내 순위</span>
+                  </div>
+                </div>
+                <div className="flex items-baseline gap-1 relative z-10">
+                  <span className="text-2xl font-black tabular-nums">{data.my_score.toLocaleString()}</span>
+                  <span className="text-sm text-white/60">점</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 랭킹 리스트 */}
+            <div className="flex-1 overflow-y-auto px-4 pb-6 pt-2 space-y-1">
+              {data.entries.map((e, i) => {
+                const isTop3 = i < 3;
+                const trophyColor = i === 0 ? 'text-yellow-500' : i === 1 ? 'text-slate-400' : 'text-amber-700';
+                const avatarStyle =
+                  i === 0
+                    ? 'bg-yellow-50 text-yellow-700'
+                    : i === 1
+                    ? 'bg-slate-100 text-slate-600'
+                    : i === 2
+                    ? 'bg-amber-50 text-amber-700'
+                    : 'bg-surface-variant text-on-surface-variant';
+                const scoreStyle =
+                  i === 0
+                    ? 'text-yellow-600 font-bold'
+                    : i === 1
+                    ? 'text-slate-600 font-bold'
+                    : i === 2
+                    ? 'text-amber-700 font-bold'
+                    : 'text-on-surface-variant font-semibold';
+                return (
+                  <Fragment key={e.rank}>
+                    <div
+                      className={`flex items-center justify-between p-3 rounded-xl hover:bg-surface-container-low transition-colors mx-2 group ${
+                        e.is_me ? 'bg-[#1A237E]/5' : ''
+                      }`}
+                    >
+                      <div className="flex items-center gap-4 min-w-0">
+                        <div className="w-8 flex justify-center flex-shrink-0">
+                          {isTop3 ? (
+                            <span
+                              className={`material-symbols-outlined ${trophyColor} transform group-hover:scale-110 transition-transform`}
+                              style={{
+                                fontVariationSettings: '"FILL" 1',
+                                fontSize: i === 0 ? '28px' : i === 1 ? '26px' : '24px',
+                              }}
+                            >
+                              emoji_events
+                            </span>
+                          ) : (
+                            <span className="text-base font-bold text-on-surface-variant tabular-nums">{e.rank}</span>
+                          )}
+                        </div>
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${avatarStyle}`}>
+                          <span className="material-symbols-outlined text-[18px]">person</span>
+                        </div>
+                        <span
+                          className={`truncate ${isTop3 ? 'text-lg font-bold text-on-surface' : 'text-base font-medium text-on-surface'}`}
+                        >
+                          {e.nickname}{e.is_me ? ' (나)' : ''}
+                        </span>
+                      </div>
+                      <span className={`text-base tabular-nums whitespace-nowrap ${scoreStyle}`}>
+                        {e.score.toLocaleString()}점
+                      </span>
+                    </div>
+                    {i === 2 && (
+                      <div className="py-2 px-4">
+                        <div className="h-px bg-outline-variant/40 w-full" />
+                      </div>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </div>
+          </>
+        )}
 
         {/* 하단 fade gradient */}
         <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-surface-container-lowest to-transparent pointer-events-none" />

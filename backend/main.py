@@ -863,6 +863,17 @@ def get_user_level(user_id: int, db: Session = Depends(get_db)):
 # [게임 시뮬레이터] 시나리오 목록
 # =====================================================================
 
+@app.get("/api/game/my-participation")
+def get_my_participation(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    p = crud.get_active_participation(db, current_user.id)
+    if not p:
+        return {"success": True, "data": None}
+    return {"success": True, "data": {"participation_id": p.id, "scenario_id": p.scenario_id}}
+
+
 @app.get("/api/game/scenarios")
 def get_scenarios(db: Session = Depends(get_db)):
     scenarios = crud.get_all_scenarios(db)
@@ -1390,6 +1401,10 @@ def get_today_quiz(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    today_kst = datetime.now(KST).date()
+    completion = crud.get_daily_completion(db, current_user.id, today_kst)
+    current_streak = crud.get_current_streak(db, current_user.id, today_kst)
+
     questions = crud.select_weighted_questions(db, current_user.id, n=6)
     if not questions:
         return JSONResponse(status_code=404, content={"success": False, "message": "퀴즈 문제를 불러올 수 없습니다."})
@@ -1409,10 +1424,37 @@ def get_today_quiz(
     return {
         "success": True,
         "data": {
-            "questions":   items,
-            "today_total": len(items),
+            "questions":          items,
+            "today_total":        len(items),
+            "already_completed":  completion is not None,
+            "current_streak":     current_streak,
+            "completion": {
+                "correct_count": completion.correct_count,
+                "total":         completion.total,
+                "streak":        completion.streak,
+                "results":       completion.results,
+            } if completion else None,
         },
     }
+
+
+@app.post("/api/quiz/daily/complete")
+def complete_daily_quiz(
+    req: schemas.QuizDailyCompleteRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    today_kst = datetime.now(KST).date()
+    entry = crud.save_daily_completion(
+        db,
+        user_id=current_user.id,
+        date=today_kst,
+        correct_count=req.correct_count,
+        total=req.total,
+        streak=req.streak,
+        results=req.results,
+    )
+    return {"success": True, "data": {"date": str(entry.date)}}
 
 
 @app.post("/api/quiz/{question_id}/submit")
@@ -1447,10 +1489,108 @@ def submit_quiz(
     }
 
 
+@app.post("/api/quiz/{question_id}/check")
+def check_quiz_answer(
+    question_id: int,
+    req: schemas.QuizSubmitRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """정답 여부 확인만 - QuizUserProgress 미업데이트 (무한 퀴즈 전용)"""
+    question = crud.get_quiz_question_by_id(db, question_id)
+    if not question:
+        return JSONResponse(status_code=404, content={"success": False, "message": "문제를 찾을 수 없습니다."})
+
+    is_correct = req.selected_answer.strip() == question.answer.strip()
+    return {
+        "success": True,
+        "data": {
+            "is_correct":     is_correct,
+            "correct_answer": question.answer,
+            "explanation":    question.explanation,
+            "weight":         0,
+            "correct_streak": 0,
+        },
+    }
+
+
 @app.get("/api/quiz/status")
 def get_quiz_status(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
     status = crud.get_quiz_status(db, current_user.id)
-    return {"success": True, "data": status}
+    today_kst = datetime.now(KST).date()
+    completion = crud.get_daily_completion(db, current_user.id, today_kst)
+    streak = crud.get_current_streak(db, current_user.id, today_kst)
+    return {
+        "success": True,
+        "data": {
+            **status,
+            "streak": streak,
+            "today_done": completion is not None,
+            "today_completion": {
+                "correct_count": completion.correct_count,
+                "total": completion.total,
+                "results": completion.results,
+            } if completion else None,
+        },
+    }
+
+
+# =====================================================================
+# [퀴즈] [DEV ONLY] 오늘 일일 퀴즈 완료 기록 삭제 - 테스트 전용, 배포 전 제거 필요
+# =====================================================================
+
+# TODO: 배포 전 이 엔드포인트 제거
+@app.post("/api/quiz/dev/reset-daily")
+def dev_reset_daily_quiz(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    today_kst = datetime.now(KST).date()
+    completion = crud.get_daily_completion(db, current_user.id, today_kst)
+    if completion:
+        db.delete(completion)
+        db.commit()
+        return {"success": True, "data": {"deleted": True}}
+    return {"success": True, "data": {"deleted": False}}
+
+
+@app.get("/api/quiz/pool")
+def get_quiz_pool(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    questions = crud.select_weighted_questions(db, current_user.id, n=20)
+    items = [
+        {
+            "id":        q.id,
+            "category":  q.category,
+            "quiz_type": q.quiz_type,
+            "question":  q.question,
+            "options":   q.options,
+            "is_solved": False,
+        }
+        for q in questions
+    ]
+    return {"success": True, "data": {"questions": items}}
+
+
+@app.post("/api/quiz/infinite/score")
+def submit_quiz_infinite_score(
+    req: schemas.QuizInfiniteScoreRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    result = crud.submit_infinite_score(db, current_user.id, req.score)
+    return {"success": True, "data": result}
+
+
+@app.get("/api/quiz/ranking")
+def get_quiz_ranking_endpoint(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    data = crud.get_quiz_ranking(db, current_user.id)
+    return {"success": True, "data": data}
