@@ -3,8 +3,7 @@ from sqlalchemy import func
 from datetime import datetime, timedelta, timezone, date as date_type
 from typing import Optional
 import random
-import models, schemas
-import models
+from db import models, schemas
 
 def get_user_by_kakao_id(db: Session, kakao_id: str):
     return db.query(models.User).filter(models.User.kakao_id == kakao_id).first()

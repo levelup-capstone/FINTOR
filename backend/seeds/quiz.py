@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from models import QuizQuestion
+from db.models import QuizQuestion
 
 QUIZ_QUESTIONS = [
     # ──────────────────────────────────────────────

@@ -1,0 +1,493 @@
+import json
+import os
+from datetime import datetime, timedelta, timezone
+from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
+from openai import OpenAI
+from sqlalchemy.orm import Session
+
+from db import models, schemas, crud
+from db.session import get_db, SessionLocal
+from dependencies import get_current_user
+from utils.scoring import calculate_score
+
+KST = timezone(timedelta(hours=9))
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+router = APIRouter()
+
+
+def _calc_today_index(start_date, total_days: int = 7) -> int:
+    """start_date 기준 경과일 → 1~7 (초과 시 total_days 고정)"""
+    now = datetime.now(KST)
+    if start_date.tzinfo is None:
+        start_date = start_date.replace(tzinfo=KST)
+    elapsed = (now - start_date).days + 1
+    return max(1, min(elapsed, total_days))
+
+
+def _calc_portfolio_value(
+    initial_cash: float,
+    prev_value: float,
+    prev_allocations: dict | None,
+    prices_map: dict,
+    day_index: int,
+) -> float:
+    """
+    오늘의 평가액 = 어제 평가액 × Σ(어제 비율 × 오늘가격/어제가격).
+    Day1은 아직 운용 전이므로 initial_cash 그대로 반환.
+    """
+    if day_index <= 1 or not prev_allocations:
+        return round(initial_cash, 2)
+
+    factor = 0.0
+    leftover_ratio = 100.0
+    for asset, ratio in prev_allocations.items():
+        if ratio <= 0:
+            continue
+        prices = prices_map.get(asset)
+        if not prices or len(prices) < day_index:
+            continue
+        prev_price  = prices[day_index - 2]
+        today_price = prices[day_index - 1]
+        if not prev_price:
+            continue
+        factor += (ratio / 100) * (today_price / prev_price)
+        leftover_ratio -= ratio
+    factor += max(leftover_ratio, 0) / 100
+    return round(prev_value * factor, 2)
+
+
+def _game_daily_settlement():
+    """매일 자정: 당일 미확정 participation을 전날 배분 그대로 정산"""
+    db = SessionLocal()
+    try:
+        now = datetime.now(KST)
+        print(f"⏰ [게임 정산] {now.strftime('%Y-%m-%d %H:%M')} 시작")
+
+        active_list = db.query(models.GameParticipation).filter(
+            models.GameParticipation.is_finalized == False
+        ).all()
+        print(f"   진행 중인 participation: {len(active_list)}개")
+
+        settled, skipped, finalized = 0, 0, 0
+
+        for p in active_list:
+            today_idx = _calc_today_index(p.start_date)
+            existing = crud.get_allocation_by_day(db, p.id, today_idx)
+            if existing:
+                skipped += 1
+                continue
+
+            ancestor_alloc = None
+            for d in range(today_idx - 1, 0, -1):
+                a = crud.get_allocation_by_day(db, p.id, d)
+                if a:
+                    ancestor_alloc = a
+                    break
+            if not ancestor_alloc:
+                print(f"   ⚠️  participation {p.id} (user {p.user_id}): 이전 배분 기록 없음 — 스킵")
+                skipped += 1
+                continue
+
+            prices_rows = crud.get_prices_by_scenario(db, p.scenario_id)
+            prices_map: dict[str, list] = {}
+            for row in prices_rows:
+                prices_map.setdefault(row.asset, [None] * 7)
+                prices_map[row.asset][row.day_index - 1] = row.price
+
+            running_value = ancestor_alloc.portfolio_value
+            for d in range(ancestor_alloc.day_index + 1, today_idx + 1):
+                running_value = _calc_portfolio_value(
+                    p.initial_cash, running_value, ancestor_alloc.allocations, prices_map, d
+                )
+                rr = round((running_value - p.initial_cash) / p.initial_cash * 100, 2)
+                crud.create_allocation(db, p.id, d, ancestor_alloc.allocations, running_value, rr)
+            settled += 1
+            print(f"   ✅ participation {p.id} (user {p.user_id}) Day {ancestor_alloc.day_index + 1}~{today_idx} 자동 정산 — ₩{running_value:,.0f}")
+
+            if today_idx >= 7:
+                crud.finalize_participation(db, p.id)
+                finalized += 1
+                print(f"   🏁 participation {p.id} 시즌 종료 처리 완료")
+
+        print(f"✅ [게임 정산] 완료 — 정산 {settled}건 / 종료 {finalized}건 / 스킵 {skipped}건")
+    except Exception as e:
+        print(f"🚨 [게임 정산 오류]: {e}")
+    finally:
+        db.close()
+
+
+@router.get("/api/game/my-participation")
+def get_my_participation(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    p = crud.get_active_participation(db, current_user.id)
+    if not p:
+        return {"success": True, "data": None}
+    return {"success": True, "data": {"participation_id": p.id, "scenario_id": p.scenario_id}}
+
+
+@router.get("/api/game/scenarios")
+def get_scenarios(db: Session = Depends(get_db)):
+    scenarios = crud.get_all_scenarios(db)
+    return {
+        "success": True,
+        "data": [
+            {
+                "id":           s.id,
+                "stage":        s.season,
+                "name":         s.name,
+                "theme":        s.theme,
+                "scenario_key": s.scenario_key,
+                "assets":       s.assets,
+            }
+            for s in scenarios
+        ],
+    }
+
+
+@router.post("/api/game/start")
+def start_game(
+    req: schemas.GameStartRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    scenario = crud.get_scenario_by_id(db, req.scenario_id)
+    if not scenario:
+        return JSONResponse(status_code=404, content={"success": False, "message": "시나리오를 찾을 수 없습니다."})
+
+    existing = crud.get_active_participation(db, current_user.id)
+    if existing and existing.scenario_id == req.scenario_id:
+        return {
+            "success": True,
+            "data": {"participation_id": existing.id, "scenario_id": existing.scenario_id},
+        }
+
+    start_date = datetime.now(KST)
+    p = crud.create_participation(db, current_user.id, req.scenario_id, start_date)
+    return {
+        "success": True,
+        "data": {"participation_id": p.id, "scenario_id": p.scenario_id, "start_date": start_date.isoformat()},
+    }
+
+
+# TODO: 배포 전 이 엔드포인트 제거
+@router.post("/api/game/participation/{participation_id}/dev/advance-day")
+def dev_advance_day(
+    participation_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    p = crud.get_participation(db, participation_id)
+    if not p or p.user_id != current_user.id:
+        return JSONResponse(status_code=404, content={"success": False, "message": "참여 정보를 찾을 수 없습니다."})
+    p.start_date = p.start_date - timedelta(days=1)
+    db.commit()
+    new_today = _calc_today_index(p.start_date)
+    return {"success": True, "data": {"today_index": new_today}}
+
+
+# TODO: 배포 전 이 엔드포인트 제거
+@router.post("/api/game/dev/reset-all")
+def dev_reset_all_participations(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    all_participations = db.query(models.GameParticipation).filter(
+        models.GameParticipation.user_id == current_user.id
+    ).all()
+    deleted_count = len(all_participations)
+    for p in all_participations:
+        db.delete(p)
+    db.commit()
+    return {"success": True, "data": {"deleted_count": deleted_count}}
+
+
+@router.get("/api/game/participation/{participation_id}")
+def get_participation(
+    participation_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    p = crud.get_participation(db, participation_id)
+    if not p or p.user_id != current_user.id:
+        return JSONResponse(status_code=404, content={"success": False, "message": "참여 정보를 찾을 수 없습니다."})
+
+    scenario  = p.scenario
+    today_idx = _calc_today_index(p.start_date)
+
+    prices_rows = crud.get_prices_by_scenario(db, scenario.id)
+    prices_map: dict[str, list] = {}
+    for row in prices_rows:
+        prices_map.setdefault(row.asset, [None] * 7)
+        prices_map[row.asset][row.day_index - 1] = row.price
+
+    macros_rows = crud.get_macros_by_scenario(db, scenario.id)
+    macros = [
+        {"day_index": m.day_index, "cpi": m.cpi, "interest_rate": m.interest_rate,
+         "fx_usdkrw": m.fx_usdkrw, "vix": m.vix}
+        for m in macros_rows if m.day_index <= today_idx
+    ]
+
+    news_by_day = {}
+    for day in range(1, today_idx + 1):
+        news_rows = crud.get_news_by_scenario_and_day(db, scenario.id, day)
+        news_by_day[day] = [
+            {"slot": n.slot, "title": n.title, "description": n.description, "news_type": n.news_type, "hint": n.hint}
+            for n in news_rows
+        ]
+
+    alloc_rows = crud.get_allocations_by_participation(db, participation_id)
+    allocations = [
+        {"day_index": a.day_index, "allocations": a.allocations,
+         "portfolio_value": a.portfolio_value, "return_rate": a.return_rate,
+         "tags": a.tags or [], "memo": a.memo or ""}
+        for a in alloc_rows
+    ]
+
+    latest_alloc = alloc_rows[-1] if alloc_rows else None
+    if latest_alloc:
+        current_value = latest_alloc.portfolio_value
+        for d in range(latest_alloc.day_index + 1, today_idx + 1):
+            current_value = _calc_portfolio_value(
+                p.initial_cash, current_value, latest_alloc.allocations, prices_map, d
+            )
+    else:
+        current_value = p.initial_cash
+    total_return = round((current_value - p.initial_cash) / p.initial_cash * 100, 2)
+
+    return {
+        "success": True,
+        "data": {
+            "participation_id": p.id,
+            "scenario": {
+                "id":         scenario.id,
+                "stage":      scenario.season,
+                "name":       scenario.name,
+                "theme":      scenario.theme,
+                "assets":     scenario.assets,
+                "recap_text": scenario.recap_text,
+                "key_lesson": scenario.key_lesson,
+            },
+            "today_index":   today_idx,
+            "is_finalized":  p.is_finalized,
+            "initial_cash":  p.initial_cash,
+            "current_value": current_value,
+            "total_return":  total_return,
+            "prices":        prices_map,
+            "macros":        macros,
+            "news_by_day":   news_by_day,
+            "allocations":   allocations,
+        },
+    }
+
+
+@router.post("/api/game/participation/{participation_id}/allocate")
+def allocate_game(
+    participation_id: int,
+    req: schemas.GameAllocateRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    p = crud.get_participation(db, participation_id)
+    if not p or p.user_id != current_user.id:
+        return JSONResponse(status_code=404, content={"success": False, "message": "참여 정보를 찾을 수 없습니다."})
+    if p.is_finalized:
+        return JSONResponse(status_code=400, content={"success": False, "message": "이미 종료된 시뮬레이션입니다."})
+
+    today_idx = _calc_today_index(p.start_date)
+
+    existing = crud.get_allocation_by_day(db, participation_id, today_idx)
+    if existing:
+        return JSONResponse(status_code=400, content={"success": False, "message": "오늘 이미 매매를 확정했습니다."})
+
+    prices_rows = crud.get_prices_by_scenario(db, p.scenario_id)
+    prices_map: dict[str, list] = {}
+    for row in prices_rows:
+        prices_map.setdefault(row.asset, [None] * 7)
+        prices_map[row.asset][row.day_index - 1] = row.price
+
+    ancestor_alloc = None
+    if today_idx > 1:
+        for d in range(today_idx - 1, 0, -1):
+            a = crud.get_allocation_by_day(db, participation_id, d)
+            if a:
+                ancestor_alloc = a
+                break
+
+    if ancestor_alloc:
+        running_value = ancestor_alloc.portfolio_value
+        for d in range(ancestor_alloc.day_index + 1, today_idx):
+            running_value = _calc_portfolio_value(
+                p.initial_cash, running_value, ancestor_alloc.allocations, prices_map, d
+            )
+            gap_return_rate = round((running_value - p.initial_cash) / p.initial_cash * 100, 2)
+            crud.create_allocation(
+                db, participation_id, d, ancestor_alloc.allocations, running_value, gap_return_rate
+            )
+        portfolio_value = _calc_portfolio_value(
+            p.initial_cash, running_value, ancestor_alloc.allocations, prices_map, today_idx
+        )
+    else:
+        portfolio_value = p.initial_cash
+    return_rate = round((portfolio_value - p.initial_cash) / p.initial_cash * 100, 2)
+
+    alloc = crud.create_allocation(
+        db, participation_id, today_idx, req.allocations, portfolio_value, return_rate,
+        tags=req.tags, memo=req.memo,
+    )
+
+    if today_idx >= 7:
+        crud.finalize_participation(db, participation_id)
+        try:
+            scenario = crud.get_scenario_by_id(db, p.scenario_id)
+            all_allocs = crud.get_allocations_by_participation(db, participation_id)
+            scores = calculate_score(all_allocs, scenario)
+            crud.save_game_result(db, participation_id, scores)
+        except Exception as e:
+            print(f"🚨 [점수 산출 오류] participation {participation_id}: {e}")
+
+    return {
+        "success": True,
+        "data": {
+            "day_index":       alloc.day_index,
+            "portfolio_value": alloc.portfolio_value,
+            "return_rate":     alloc.return_rate,
+            "is_finalized":    today_idx >= 7,
+        },
+    }
+
+
+@router.get("/api/game/participation/{participation_id}/score")
+def get_game_score(
+    participation_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    p = crud.get_participation(db, participation_id)
+    if not p or p.user_id != current_user.id:
+        return JSONResponse(status_code=404, content={"success": False, "message": "참여 정보를 찾을 수 없습니다."})
+
+    result = crud.get_game_result(db, participation_id)
+    if not result:
+        return JSONResponse(status_code=404, content={"success": False, "message": "아직 점수가 산출되지 않았습니다."})
+
+    rank_info = crud.get_rank_for_participation(db, participation_id)
+
+    return {
+        "success": True,
+        "data": {
+            "participation_id":        result.participation_id,
+            "final_return":            result.final_return,
+            "correct_strategy_return": result.correct_strategy_return,
+            "return_score":            result.return_score,
+            "scenario_score":          result.scenario_score,
+            "diversity_score":         result.diversity_score,
+            "stability_score":         result.stability_score,
+            "total_score":             result.total_score,
+            "rank":                    rank_info["rank"]       if rank_info else None,
+            "total_participants":       rank_info["total"]      if rank_info else None,
+            "percentile":              rank_info["percentile"] if rank_info else None,
+        },
+    }
+
+
+@router.get("/api/game/participation/{participation_id}/review")
+def get_game_review(
+    participation_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    p = crud.get_participation(db, participation_id)
+    if not p or p.user_id != current_user.id:
+        return JSONResponse(status_code=404, content={"success": False, "message": "참여 정보를 찾을 수 없습니다."})
+
+    if not p.is_finalized:
+        return JSONResponse(status_code=400, content={"success": False, "message": "아직 종료되지 않은 시뮬레이션입니다."})
+
+    scenario   = p.scenario
+    alloc_rows = crud.get_allocations_by_participation(db, participation_id)
+    result     = crud.get_game_result(db, participation_id)
+
+    alloc_summary = [
+        {
+            "day":         a.day_index,
+            "allocations": a.allocations or {},
+            "return_rate": round(a.return_rate, 2) if a.return_rate is not None else None,
+            "tags":        a.tags or [],
+            "memo":        a.memo or "",
+        }
+        for a in alloc_rows
+    ]
+
+    score_text = (
+        f"수익률 점수 {result.return_score}/30, "
+        f"시나리오 적응 {result.scenario_score}/30, "
+        f"분산투자 {result.diversity_score}/20, "
+        f"안정성 {result.stability_score}/20, "
+        f"종합 {result.total_score}/100, "
+        f"최종 수익률 {result.final_return}%"
+    ) if result else "점수 데이터 없음"
+
+    prompt = f"""당신은 투자 시뮬레이션 코치입니다. 아래 투자자의 7일 시뮬레이션 결과를 분석하여 구체적이고 실용적인 피드백을 제공하세요.
+
+[주의] 응답에 금액(원 단위 숫자)을 절대 언급하지 마세요. 자산 비중(%)과 수익률(%)만 사용하세요.
+
+[시나리오]
+- 이름: {scenario.name} / 테마: {scenario.theme}
+- 투자 가능 자산: {', '.join(scenario.assets or [])}
+- 정답 자산(이번 시나리오에서 성과가 좋은 자산): {', '.join(getattr(scenario, 'correct_assets', None) or [])}
+- 함정 자산(피해야 할 자산): {', '.join(getattr(scenario, 'trap_assets', None) or [])}
+
+[7일 투자 내역]
+- allocations: 각 자산 비중(%)
+- return_rate: 해당 일 기준 누적 수익률(%)
+- tags: 투자자가 직접 선택한 투자 판단 근거 태그 (예: #금리인하_지연, #실적호조 등)
+- memo: 투자자가 직접 입력한 자유 메모 (투자 이유, 전략 등)
+tags와 memo는 투자자의 당일 판단 근거입니다. 이를 반드시 피드백에 반영하세요.
+{json.dumps(alloc_summary, ensure_ascii=False, indent=2)}
+
+[최종 점수]
+{score_text}
+
+반드시 아래 JSON 형식으로만 응답해주세요. 각 항목은 2~3문장, 존댓말로 작성하세요:
+{{
+  "good_judgment": "잘한 판단을 구체적 자산명·일자·비중(%) 근거와 함께 설명 (금액 언급 금지)",
+  "bad_judgment": "아쉬운 판단을 구체적 자산명·일자·비중(%) 근거와 함께 설명 (금액 언급 금지)",
+  "overall_review": "전반적인 투자 스타일 평가와 다음 시즌을 위한 실질적 조언 (금액 언급 금지)"
+}}"""
+
+    if result and result.feedback_text:
+        try:
+            cached = json.loads(result.feedback_text)
+            return {"success": True, "data": cached}
+        except Exception:
+            pass
+
+    if not OPENAI_API_KEY:
+        return JSONResponse(status_code=503, content={"success": False, "message": "OpenAI API 키가 설정되지 않았습니다."})
+
+    try:
+        client = OpenAI(api_key=OPENAI_API_KEY)
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+        )
+        review = json.loads(response.choices[0].message.content)
+        data = {
+            "good_judgment":  review.get("good_judgment", ""),
+            "bad_judgment":   review.get("bad_judgment", ""),
+            "overall_review": review.get("overall_review", ""),
+        }
+
+        if result:
+            result.feedback_text = json.dumps(data, ensure_ascii=False)
+            db.commit()
+
+        return {"success": True, "data": data}
+    except Exception as e:
+        print(f"🚨 [리뷰 생성 오류]: {e}")
+        return JSONResponse(status_code=500, content={"success": False, "message": "AI 리뷰 생성에 실패했습니다."})

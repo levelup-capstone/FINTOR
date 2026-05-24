@@ -10,6 +10,51 @@
 
 """
 
+from db import schemas
+
+# ── 투자 성향 설문 채점 ────────────────────────────────────────────────
+
+RISK_TYPE_SCORE = {"v-low": 1, "low": 4, "high": 8, "v-high": 12}
+EXPERIENCE_SCORE = {"none": 0, "under-6m": 1, "6m-1y": 2, "1y-3y": 3, "3y-5y": 4, "over-5y": 5}
+PERIOD_SCORE = {"long": 1, "m-long": 2, "s-mid": 3, "short": 4}
+GOAL_SCORE = {
+    "saving": 1, "retirement": 1, "home-ownership": 1,
+    "investment-management": 2, "others": 2,
+    "growth": 3,
+}
+AGE_SCORE = {"under-20": 2, "20y": 2, "30y": 1, "40y": 1, "50y": 0, "over-60": 0}
+ASSETS_SCORE = {
+    "under-500": 2, "500-1000": 1,
+    "1000-5000": 0, "5000-1m": 0,
+    "1m-3m": -1, "over-3m": -2, "over_3m": -2,
+}
+INCOME_SCORE = {
+    "under-200": 0, "200-400": 0,
+    "400-600": 1, "600-800": 1,
+    "800-1000": 2, "over-1000": 2,
+}
+RISK_LABELS = {1: "안정형", 2: "안정추구형", 3: "위험중립형", 4: "적극투자형", 5: "공격투자형"}
+
+
+def calc_risk_score(survey: "schemas.SurveyCreate") -> int:
+    return (
+        RISK_TYPE_SCORE.get(survey.risk_type, 1)
+        + EXPERIENCE_SCORE.get(survey.investment_experience, 0)
+        + PERIOD_SCORE.get(survey.preferred_period, 1)
+        + GOAL_SCORE.get(survey.investment_goal, 1)
+        + AGE_SCORE.get(survey.age_group, 1)
+        + ASSETS_SCORE.get(survey.investment_assets, 0)
+        + INCOME_SCORE.get(survey.monthly_income, 0)
+    )
+
+
+def score_to_level(score: int) -> int:
+    if score <= 6:    return 1
+    elif score <= 12: return 2
+    elif score <= 18: return 3
+    elif score <= 24: return 4
+    else:             return 5
+
 TOTAL_DAYS = 7
 
 

@@ -4,13 +4,13 @@
 """
 import sys
 import os
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from dotenv import load_dotenv
-load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
 
-from database import get_db
-from models import GameScenario, GameDayPrice, GameDayNews, GameDayMacro
+from db.session import get_db
+from db.models import GameScenario, GameDayPrice, GameDayNews, GameDayMacro
 
 # ─────────────────────────────────────────────────────────────
 # 함정 배치 요약
