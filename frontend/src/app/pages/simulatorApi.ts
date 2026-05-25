@@ -96,13 +96,26 @@ export async function startGame(scenarioId: number): Promise<{ participation_id:
   });
 }
 
+export type AllocateResult = {
+  day_index: number;
+  portfolio_value: number;
+  return_rate: number;
+  is_finalized: boolean;
+  // 시즌 종료(7일차 확정) 시에만 의미 있는 값
+  granted_exp: number;
+  new_level: number | null;
+  new_exp: number | null;
+  leveled_up: boolean;
+  gained_levels: number;
+};
+
 export async function confirmAllocation(
   participationId: number,
   allocations: Record<string, number>,
   tags: string[],
   memo: string,
-): Promise<{ day_index: number; portfolio_value: number; return_rate: number; is_finalized: boolean } | null> {
-  return apiCall(`/api/game/participation/${participationId}/allocate`, {
+): Promise<AllocateResult | null> {
+  return apiCall<AllocateResult>(`/api/game/participation/${participationId}/allocate`, {
     method: 'POST',
     body: JSON.stringify({ allocations, tags, memo }),
   });

@@ -358,6 +358,7 @@ def allocate_game(
         tags=req.tags, memo=req.memo,
     )
 
+    exp_result = None
     if today_idx >= 7:
         crud.finalize_participation(db, participation_id)
         try:
@@ -365,8 +366,14 @@ def allocate_game(
             all_allocs = crud.get_allocations_by_participation(db, participation_id)
             scores = calculate_score(all_allocs, scenario)
             crud.save_game_result(db, participation_id, scores)
+
+            # 시즌 종료 EXP 부여: 종합 점수 × 0.5 (예: 80점 → 40 EXP)
+            total_score = scores.get("total_score") or 0
+            exp_amount = int(total_score * 0.5)
+            if exp_amount > 0:
+                exp_result = crud.grant_exp(db, current_user.id, exp_amount)
         except Exception as e:
-            print(f"🚨 [점수 산출 오류] participation {participation_id}: {e}")
+            print(f"🚨 [점수 산출/EXP 부여 오류] participation {participation_id}: {e}")
 
     return {
         "success": True,
@@ -375,6 +382,11 @@ def allocate_game(
             "portfolio_value": alloc.portfolio_value,
             "return_rate":     alloc.return_rate,
             "is_finalized":    today_idx >= 7,
+            "granted_exp":     exp_result["granted"]       if exp_result else 0,
+            "new_level":       exp_result["level"]         if exp_result else None,
+            "new_exp":         exp_result["exp"]           if exp_result else None,
+            "leveled_up":      exp_result["leveled_up"]    if exp_result else False,
+            "gained_levels":   exp_result["gained_levels"] if exp_result else 0,
         },
     }
 

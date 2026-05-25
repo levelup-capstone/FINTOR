@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { fetchParticipation, fetchGameScore, fetchGameReview, devResetParticipation, type ParticipationData, type GameScore, type GameReview } from './simulatorApi';
+import { LevelUpModal, type LevelUpPayload } from '../components/LevelUpModal';
 
 export function SimulatorResult() {
   const navigate = useNavigate();
@@ -9,6 +10,9 @@ export function SimulatorResult() {
   const [reviewData, setReviewData] = useState<GameReview | null>(null);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // 시즌 종료로 레벨업한 경우 SimulatorDashboard가 sessionStorage에 넣어둠
+  const [levelUpPayload, setLevelUpPayload] = useState<LevelUpPayload | null>(null);
 
   useEffect(() => {
     const pid = localStorage.getItem('participationId');
@@ -26,6 +30,23 @@ export function SimulatorResult() {
       }
       setLoading(false);
     });
+
+    // 시즌 종료 직후 SimulatorDashboard가 보관한 EXP 알림 확인 — 레벨업이면 모달
+    try {
+      const raw = sessionStorage.getItem('fintor_pending_exp_notify');
+      if (raw) {
+        const data = JSON.parse(raw);
+        sessionStorage.removeItem('fintor_pending_exp_notify');
+        if (data?.leveled_up && data.level != null) {
+          setLevelUpPayload({
+            newLevel:     data.level,
+            gainedLevels: data.gained_levels ?? 1,
+            granted:      data.granted ?? 0,
+            source:       '시즌 완주',
+          });
+        }
+      }
+    } catch {}
   }, []);
 
   if (loading) {
@@ -313,6 +334,12 @@ export function SimulatorResult() {
           <span className="material-symbols-outlined">arrow_forward</span>
         </button>
       </section>
+
+      <LevelUpModal
+        open={levelUpPayload !== null}
+        onClose={() => setLevelUpPayload(null)}
+        payload={levelUpPayload}
+      />
     </div>
   );
 }

@@ -129,17 +129,27 @@ export async function fetchRanking(): Promise<RankingData | null> {
   return apiCall<RankingData>('/api/quiz/ranking');
 }
 
+export type DailyCompleteResult = {
+  date: string;
+  granted_exp: number;
+  new_level: number | null;
+  new_exp: number | null;
+  leveled_up: boolean;
+  gained_levels: number;
+  milestone_bonus: number;            // streak milestone(10/30/100일) 추가 EXP
+  milestone_reached: number | null;   // 10, 30, 100 또는 null
+};
+
 export async function completeDailyQuiz(
   correctCount: number,
   total: number,
   streak: number,
   results: boolean[],
-): Promise<boolean> {
-  const result = await apiCall<{ date: string }>('/api/quiz/daily/complete', {
+): Promise<DailyCompleteResult | null> {
+  return apiCall<DailyCompleteResult>('/api/quiz/daily/complete', {
     method: 'POST',
     body: JSON.stringify({ correct_count: correctCount, total, streak, results }),
   });
-  return result !== null;
 }
 
 // TODO: 배포 전 제거 — DEV 전용: 오늘 일일 퀴즈 완료 기록 DB에서 삭제

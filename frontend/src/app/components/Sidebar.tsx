@@ -13,6 +13,7 @@ export function Sidebar() {
   const location = useLocation();
   const [nickname, setNickname] = useState<string>(() => readLoginData()?.nickname ?? '사용자');
   const [profileImage] = useState<string | null>(() => readLoginData()?.profileImage ?? null);
+  const [riskType, setRiskType] = useState<string | null>(null);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -21,6 +22,15 @@ export function Sidebar() {
     };
     window.addEventListener('nickname-changed', handler);
     return () => window.removeEventListener('nickname-changed', handler);
+  }, []);
+
+  useEffect(() => {
+    const userId = readLoginData()?.userId;
+    if (!userId) return;
+    fetch(`/api/v1/users/${userId}/level`)
+      .then((r) => r.json())
+      .then((json) => { if (json.success) setRiskType(json.data.riskType ?? null); })
+      .catch(() => {});
   }, []);
 
   const menuItems = [
@@ -51,7 +61,6 @@ export function Sidebar() {
           </div>
           <div>
             <p className="font-bold text-primary text-sm">{nickname}</p>
-            <p className="text-xs text-on-surface-variant">Premium Member</p>
           </div>
         </div>
         <button className="w-full py-2 px-4 bg-primary text-white rounded-lg text-xs font-semibold hover:translate-x-1 transition-transform">

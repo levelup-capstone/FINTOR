@@ -64,6 +64,10 @@ def complete_daily_quiz(
     current_user: models.User = Depends(get_current_user),
 ):
     today_kst = datetime.now(KST).date()
+
+    # 중복 EXP 방지: 이미 오늘 completion이 있으면 EXP 부여 안 함
+    already_done = crud.get_daily_completion(db, current_user.id, today_kst) is not None
+
     entry = crud.save_daily_completion(
         db,
         user_id=current_user.id,
@@ -73,7 +77,49 @@ def complete_daily_quiz(
         streak=req.streak,
         results=req.results,
     )
-    return {"success": True, "data": {"date": str(entry.date)}}
+
+    # EXP 부여: 정답 1개당 +3, 만점 보너스 +5, streak milestone 보너스
+    granted = 0
+    new_level = None
+    new_exp = None
+    leveled_up = False
+    gained_levels = 0
+    milestone_bonus = 0
+    milestone_reached = None
+
+    # streak milestone 보상표 (10/30/100일 달성 시 추가 EXP)
+    MILESTONE_BONUS = {10: 10, 30: 50, 100: 200}
+
+    if not already_done:
+        base = req.correct_count * 3
+        bonus = 5 if req.total > 0 and req.correct_count == req.total else 0
+
+        if req.streak in MILESTONE_BONUS:
+            milestone_bonus = MILESTONE_BONUS[req.streak]
+            milestone_reached = req.streak
+
+        amount = base + bonus + milestone_bonus
+        if amount > 0:
+            exp_result = crud.grant_exp(db, current_user.id, amount)
+            granted       = exp_result["granted"]
+            new_level     = exp_result["level"]
+            new_exp       = exp_result["exp"]
+            leveled_up    = exp_result["leveled_up"]
+            gained_levels = exp_result["gained_levels"]
+
+    return {
+        "success": True,
+        "data": {
+            "date":              str(entry.date),
+            "granted_exp":       granted,
+            "new_level":         new_level,
+            "new_exp":           new_exp,
+            "leveled_up":        leveled_up,
+            "gained_levels":     gained_levels,
+            "milestone_bonus":   milestone_bonus,
+            "milestone_reached": milestone_reached,
+        },
+    }
 
 
 @router.post("/api/quiz/{question_id}/submit")

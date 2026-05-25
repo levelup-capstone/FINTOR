@@ -163,12 +163,6 @@ export function Header() {
           </nav>
         </div>
         <div className="flex items-center gap-4">
-          <button className="p-2 rounded-full hover:bg-slate-200/50 transition-colors relative">
-            <span className="material-symbols-outlined text-on-surface-variant">
-              notifications
-            </span>
-            <span className="absolute top-2 right-2 w-2 h-2 bg-error rounded-full"></span>
-          </button>
 
           {/* 프로필 버튼 + 드롭다운 */}
           <div className="relative" ref={dropdownRef}>
@@ -197,9 +191,17 @@ export function Header() {
                     <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 truncate">{nickname}</p>
                   </div>
                 )}
+                <Link
+                  to="/dashboard/settings"
+                  onClick={() => setDropdownOpen(false)}
+                  className="w-full flex items-center gap-2 px-4 py-3 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors"
+                >
+                  <span className="material-symbols-outlined text-base">settings</span>
+                  설정
+                </Link>
                 <button
                   onClick={handleLogout}
-                  className="w-full flex items-center gap-2 px-4 py-3 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                  className="w-full flex items-center gap-2 px-4 py-3 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors border-t border-slate-100 dark:border-slate-700"
                 >
                   <span className="material-symbols-outlined text-base">logout</span>
                   로그아웃

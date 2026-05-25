@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
 import { fetchParticipation, fetchMyParticipation, type ParticipationData } from "./simulatorApi";
 import { fetchQuizStatus } from "./quizApi";
+import { LevelUpModal, type LevelUpPayload } from "../components/LevelUpModal";
 
-const MAX_EXP = 5000;
+const MAX_EXP = 100;
 const SIMULATOR_TOTAL_DAYS = 7;
 
 type DailyResult = {
@@ -35,6 +36,33 @@ export function Dashboard() {
   // 경험치 획득 경로 popover
   const [expGuideOpen, setExpGuideOpen] = useState(false);
   const expGuideRef = useRef<HTMLDivElement>(null);
+
+  // [DEV] 레벨업 모달 테스트
+  const [levelUpPayload, setLevelUpPayload] = useState<LevelUpPayload | null>(null);
+  const handleDevGrantExp = async () => {
+    const token = localStorage.getItem('accessToken');
+    const res = await fetch('/api/dev/grant-exp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ amount: 30 }),
+    });
+    const json = await res.json();
+    if (!json.success) return;
+    const d = json.data;
+    setLevel(d.level);
+    setExp(d.exp);
+    if (d.leveled_up) {
+      setLevelUpPayload({
+        newLevel:     d.level,
+        gainedLevels: d.gained_levels,
+        granted:      d.granted,
+        source:       '[DEV] 테스트 EXP',
+      });
+    }
+  };
   useEffect(() => {
     if (!expGuideOpen) return;
     const onClick = (e: MouseEvent) => {
@@ -80,7 +108,7 @@ export function Dashboard() {
         setStreak(s.streak);
         if (s.today_done && s.today_completion) {
           const c = s.today_completion;
-          const exp = c.correct_count * 10 + (c.correct_count === c.total ? 20 : 0);
+          const exp = c.correct_count * 3 + (c.correct_count === c.total ? 5 : 0);
           setDailyQuizResult({ correctCount: c.correct_count, total: c.total, results: c.results, exp, streak: s.streak });
         }
       }
@@ -377,6 +405,16 @@ export function Dashboard() {
               style={{ width: `${Math.min((exp / MAX_EXP) * 100, 100)}%` }}
             />
           </div>
+
+          {/* [DEV] 레벨업 모달 테스트 — 배포 전 제거 */}
+          <button
+            type="button"
+            onClick={handleDevGrantExp}
+            className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-lg text-[10px] md:text-xs font-bold text-amber-900 transition-colors"
+          >
+            <span className="material-symbols-outlined text-sm">science</span>
+            [DEV] +30 EXP (레벨업 이펙트 테스트)
+          </button>
         </div>
       </section>
 
@@ -765,6 +803,12 @@ export function Dashboard() {
           )}
         </div>
       </section>
+
+      <LevelUpModal
+        open={levelUpPayload !== null}
+        onClose={() => setLevelUpPayload(null)}
+        payload={levelUpPayload}
+      />
     </div>
   );
 }

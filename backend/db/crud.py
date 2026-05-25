@@ -66,6 +66,51 @@ def create_user_level(db: Session, user_id: int):
     return user_level
 
 
+MAX_EXP_PER_LEVEL = 100
+
+
+def grant_exp(db: Session, user_id: int, amount: int) -> dict:
+    """경험치 부여 + 레벨업 자동 처리.
+
+    - user_levels row가 없으면 자동 생성
+    - exp >= MAX_EXP_PER_LEVEL 이면 다음 레벨로 이월(다중 레벨업 허용)
+    - 반환: {level, exp, leveled_up, gained_levels, granted}
+    """
+    if amount <= 0:
+        # 0 이하 부여는 무시 (안전장치)
+        current = get_user_level(db, user_id) or create_user_level(db, user_id)
+        return {
+            "level":         current.level,
+            "exp":           current.exp,
+            "leveled_up":    False,
+            "gained_levels": 0,
+            "granted":       0,
+        }
+
+    user_level = get_user_level(db, user_id)
+    if not user_level:
+        user_level = create_user_level(db, user_id)
+
+    prev_level = user_level.level
+    user_level.exp += amount
+
+    while user_level.exp >= MAX_EXP_PER_LEVEL:
+        user_level.exp -= MAX_EXP_PER_LEVEL
+        user_level.level += 1
+
+    db.commit()
+    db.refresh(user_level)
+
+    gained = user_level.level - prev_level
+    return {
+        "level":         user_level.level,
+        "exp":           user_level.exp,
+        "leveled_up":    gained > 0,
+        "gained_levels": gained,
+        "granted":       amount,
+    }
+
+
 
 # ── 뉴스 수집 파이프라인 ───────────────────────────────────────────────────────
 def get_news_by_link(db: Session, link: str):

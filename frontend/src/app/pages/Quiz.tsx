@@ -4,6 +4,7 @@ import {
   fetchInfinitePool, submitInfiniteScore, fetchRanking, completeDailyQuiz, devResetDailyQuiz,
   type QuizQuestion, type SubmitResult, type RankingData,
 } from './quizApi';
+import { LevelUpModal, type LevelUpPayload } from '../components/LevelUpModal';
 
 
 type DailyResult = {
@@ -38,6 +39,9 @@ export function Quiz() {
   const [cachedQuestions, setCachedQuestions] = useState<QuizQuestion[]>([]);
   const [currentStreak, setCurrentStreak] = useState(0);
 
+  // 레벨업 모달 (일일 퀴즈 / streak milestone 등으로 레벨업 시 표시)
+  const [levelUpPayload, setLevelUpPayload] = useState<LevelUpPayload | null>(null);
+
   useEffect(() => {
     fetchTodayQuiz().then((data) => {
       if (!data) return;
@@ -45,7 +49,7 @@ export function Quiz() {
       setCurrentStreak(data.current_streak);
       if (data.already_completed && data.completion) {
         const c = data.completion;
-        const exp = c.correct_count * 10 + (c.correct_count === c.total ? 20 : 0);
+        const exp = c.correct_count * 3 + (c.correct_count === c.total ? 5 : 0);
         setDailyResult({ correctCount: c.correct_count, total: c.total, results: c.results, exp, streak: c.streak });
       }
     });
@@ -113,16 +117,39 @@ export function Quiz() {
     if (result) setSessionResults((prev) => [...prev, result.is_correct]);
   };
 
-  const goNext = () => {
+  const goNext = async () => {
     const total = questions.length;
     if (currentIdx + 1 >= total) {
       const correctCount = sessionResults.filter(Boolean).length;
-      const newStreak = correctCount >= Math.ceil(total / 2) ? currentStreak + 1 : 0;
-      const exp = correctCount * 10 + (correctCount === total ? 20 : 0);
-      const result: DailyResult = { correctCount, total, results: sessionResults, exp, streak: newStreak };
+      const newStreak = currentStreak + 1;
+
+      // 서버 응답을 받은 후 결과 화면 표시 → 표시되는 EXP가 실제 부여된 값과 일치
+      const resp = await completeDailyQuiz(correctCount, total, newStreak, sessionResults);
+      // 응답 실패 시 fallback (백엔드와 동일 공식 — 보통 발생 안 함)
+      const exp = resp
+        ? resp.granted_exp
+        : correctCount * 3 + (correctCount === total ? 5 : 0);
+
+      const result: DailyResult = {
+        correctCount,
+        total,
+        results: sessionResults,
+        exp,
+        streak: newStreak,
+      };
       setDailyResult(result);
       setSolving(false);
-      completeDailyQuiz(correctCount, total, newStreak, sessionResults);
+
+      if (resp?.leveled_up && resp.new_level != null) {
+        setLevelUpPayload({
+          newLevel:         resp.new_level,
+          gainedLevels:     resp.gained_levels,
+          granted:          resp.granted_exp,
+          milestoneBonus:   resp.milestone_bonus,
+          milestoneReached: resp.milestone_reached,
+          source:           '오늘의 퀴즈',
+        });
+      }
     } else {
       setCurrentIdx((i) => i + 1);
       setSelectedOpt(null);
@@ -187,6 +214,11 @@ export function Quiz() {
 
       {infiniteOpen && <InfiniteModal onClose={() => setInfiniteOpen(false)} onBestScore={(best) => setMyBest(best)} />}
       {rankingOpen && <RankingModal onClose={() => setRankingOpen(false)} />}
+      <LevelUpModal
+        open={levelUpPayload !== null}
+        onClose={() => setLevelUpPayload(null)}
+        payload={levelUpPayload}
+      />
     </div>
   );
 }

@@ -1,8 +1,23 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { fetchParticipation, confirmAllocation, devAdvanceDay, devResetParticipation, type ParticipationData, type DayNews } from './simulatorApi';
+import { fetchParticipation, confirmAllocation, devAdvanceDay, devResetParticipation, type ParticipationData, type DayNews, type AllocateResult } from './simulatorApi';
 
 const TOTAL_DAYS = 7;
+
+// 시즌 종료 시 EXP 부여 결과를 sessionStorage에 잠깐 보관 — Phase 7에서 모달로 표시 예정
+function notifySeasonExpIfFinalized(result: AllocateResult) {
+  if (!result.is_finalized || result.granted_exp <= 0) return;
+  const payload = {
+    source: 'season',
+    granted: result.granted_exp,
+    level: result.new_level,
+    exp: result.new_exp,
+    leveled_up: result.leveled_up,
+    gained_levels: result.gained_levels,
+  };
+  sessionStorage.setItem('fintor_pending_exp_notify', JSON.stringify(payload));
+  console.log(`🎯 시즌 완료! +${result.granted_exp} EXP → Level ${result.new_level} (exp ${result.new_exp})${result.leveled_up ? ` 🎉 LEVEL UP (+${result.gained_levels})` : ''}`);
+}
 const STEP_PCT = 10;
 
 const ASSET_META: Record<string, { label: string; color: string; accent: string }> = {
@@ -262,6 +277,7 @@ export function SimulatorDashboard() {
         setTodayConfirmed(true);
         setEquity(Math.floor(result.portfolio_value));
         setTotalReturn(result.return_rate);
+        notifySeasonExpIfFinalized(result);
       }
       navigate('/dashboard/simulator/season/result');
       return;
@@ -275,6 +291,7 @@ export function SimulatorDashboard() {
       setEquity(Math.floor(result.portfolio_value));
       setTotalReturn(result.return_rate);
       setRebalancingOpen(false);
+      notifySeasonExpIfFinalized(result);
       navigate('/dashboard/simulator/season/calendar');
     }
   };
@@ -530,6 +547,7 @@ export function SimulatorDashboard() {
                     setTodayConfirmed(true);
                     setEquity(Math.floor(result.portfolio_value));
                     setTotalReturn(result.return_rate);
+                    notifySeasonExpIfFinalized(result);
                   }
                 }
                 navigate('/dashboard/simulator/season/result');
