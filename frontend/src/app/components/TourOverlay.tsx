@@ -187,7 +187,7 @@ export function TourOverlay() {
         <h3 className="text-lg font-extrabold text-[#1A237E] dark:text-indigo-200 mb-2">
           {currentStep.title}
         </h3>
-        <p className="text-sm text-on-surface-variant leading-relaxed mb-5">
+        <p className="text-[15px] text-on-surface font-medium leading-relaxed mb-5">
           {currentStep.body}
         </p>
 

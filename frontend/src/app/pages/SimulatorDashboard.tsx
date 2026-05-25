@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { fetchParticipation, confirmAllocation, devAdvanceDay, devResetParticipation, type ParticipationData, type DayNews, type AllocateResult } from './simulatorApi';
+import { SimulatorTourProvider } from '../components/SimulatorTourContext';
+import { SimulatorTourOverlay } from '../components/SimulatorTourOverlay';
 
 const TOTAL_DAYS = 7;
 
@@ -67,6 +69,15 @@ function buildChartPath(history: number[], totalDays: number): string {
 }
 
 export function SimulatorDashboard() {
+  return (
+    <SimulatorTourProvider>
+      <SimulatorDashboardContent />
+      <SimulatorTourOverlay />
+    </SimulatorTourProvider>
+  );
+}
+
+function SimulatorDashboardContent() {
   const navigate = useNavigate();
   const [pData, setPData] = useState<ParticipationData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -340,7 +351,7 @@ export function SimulatorDashboard() {
   return (
     <div className="flex flex-col gap-6">
       {/* 1. 시즌 배너 */}
-      <section className="bg-[#1A237E] text-white rounded-2xl p-6 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-6 relative overflow-hidden">
+      <section data-tour="sim-banner" className="bg-[#1A237E] text-white rounded-2xl p-6 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-6 relative overflow-hidden">
         <div className="absolute -right-20 -top-20 w-64 h-64 bg-indigo-400 rounded-full opacity-20 blur-3xl pointer-events-none" />
         <div className="flex-1 z-10">
           <div className="flex items-center gap-3 mb-2">
@@ -368,6 +379,7 @@ export function SimulatorDashboard() {
             </div>
           </div>
           <button
+            data-tour="sim-calendar-link"
             onClick={() => navigate('/dashboard/simulator/season/calendar')}
             className="hidden md:flex items-center gap-2 bg-white text-[#1A237E] font-bold px-4 py-2 rounded-xl hover:bg-indigo-100 transition-colors text-sm self-center"
           >
@@ -385,7 +397,7 @@ export function SimulatorDashboard() {
       </section>
 
       {/* 2. 거시지표 */}
-      <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <section data-tour="sim-macros" className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {macroItems.map((m, idx) => (
           <button
             key={m.label}
@@ -407,7 +419,7 @@ export function SimulatorDashboard() {
       </section>
 
       {/* 2-1. 오늘의 자산 가격 */}
-      <section className="bg-surface-container-lowest rounded-2xl p-5 md:p-6 shadow-sm border border-outline-variant/30">
+      <section data-tour="sim-asset-prices" className="bg-surface-container-lowest rounded-2xl p-5 md:p-6 shadow-sm border border-outline-variant/30">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg md:text-xl font-black tracking-tight text-on-surface flex items-center gap-2">
             <span className="material-symbols-outlined">payments</span>
@@ -448,7 +460,7 @@ export function SimulatorDashboard() {
       </section>
 
       {/* 3. 오늘의 뉴스 */}
-      <section className="bg-surface-container-lowest rounded-2xl p-6 shadow-sm border border-outline-variant/30">
+      <section data-tour="sim-news" className="bg-surface-container-lowest rounded-2xl p-6 shadow-sm border border-outline-variant/30">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <h2 className="text-xl font-black tracking-tight text-on-surface flex items-center gap-2">
             <span className="material-symbols-outlined">newspaper</span>
@@ -511,7 +523,7 @@ export function SimulatorDashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* 좌측: 자산 추이 */}
         <div className="flex flex-col gap-6 lg:col-span-1">
-          <section className="bg-surface-container-lowest rounded-2xl p-6 shadow-sm border border-outline-variant/30">
+          <section data-tour="sim-equity-chart" className="bg-surface-container-lowest rounded-2xl p-6 shadow-sm border border-outline-variant/30">
             <h2 className="text-xl font-black tracking-tight text-on-surface mb-4">자산 추이</h2>
             <div className="h-48 w-full relative mt-4">
               <div className="absolute inset-0 border-b border-l border-outline-variant/30" />
@@ -552,6 +564,7 @@ export function SimulatorDashboard() {
                 }
                 navigate('/dashboard/simulator/season/result');
               }}
+              data-tour="sim-rebalancing"
               className={`bg-[#1A237E] text-white rounded-2xl shadow-sm hover:shadow-lg hover:bg-[#1f2a8c] transition-all flex items-center justify-center gap-4 p-12 md:p-16 cursor-pointer min-h-[300px] group ${
                 !todayConfirmed && !hasOpenedToday ? 'animate-navy-blink' : ''
               }`}
@@ -561,6 +574,7 @@ export function SimulatorDashboard() {
           ) : (
             <button
               type="button"
+              data-tour="sim-rebalancing"
               onClick={() => { markRebalanceOpened(); setRebalancingOpen(true); }}
               className={`bg-surface-container-lowest rounded-2xl p-6 shadow-sm border border-outline-variant/30 hover:border-[#1A237E]/60 hover:shadow-md transition-all text-left cursor-pointer group ${
                 !todayConfirmed && !hasOpenedToday ? 'animate-navy-blink' : ''
