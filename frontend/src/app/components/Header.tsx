@@ -76,7 +76,7 @@ function MarketTicker() {
           to   { transform: translateX(-50%); }
         }
         .ticker-track {
-          animation: ticker-marquee 10s linear infinite;
+          animation: ticker-marquee 30s linear infinite;
           will-change: transform;
         }
         .ticker-track:hover { animation-play-state: paused; }

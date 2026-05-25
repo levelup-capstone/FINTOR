@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
 import { fetchParticipation, fetchMyParticipation, type ParticipationData } from "./simulatorApi";
 import { fetchQuizStatus } from "./quizApi";
@@ -31,6 +31,27 @@ export function Dashboard() {
   const [dailyQuizResult, setDailyQuizResult] = useState<DailyResult | null>(null);
   const [streak, setStreak] = useState<number>(0);
   const [quizAccuracy, setQuizAccuracy] = useState<number | null>(null);
+
+  // 경험치 획득 경로 popover
+  const [expGuideOpen, setExpGuideOpen] = useState(false);
+  const expGuideRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!expGuideOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (expGuideRef.current && !expGuideRef.current.contains(e.target as Node)) {
+        setExpGuideOpen(false);
+      }
+    };
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setExpGuideOpen(false);
+    };
+    document.addEventListener('mousedown', onClick);
+    document.addEventListener('keydown', onEsc);
+    return () => {
+      document.removeEventListener('mousedown', onClick);
+      document.removeEventListener('keydown', onEsc);
+    };
+  }, [expGuideOpen]);
 
   useEffect(() => {
     const raw = localStorage.getItem('loginResult');
@@ -283,9 +304,72 @@ export function Dashboard() {
             <span className="text-xl md:text-3xl font-black text-[#1A237E] dark:text-indigo-300 font-headline uppercase tracking-tighter italic drop-shadow-sm">
               {level !== null ? `LEVEL ${level}` : 'LEVEL —'}
             </span>
-            <span className="text-[9px] md:text-[10px] font-bold text-slate-600 dark:text-slate-400 tracking-wider uppercase">
-              XP {exp.toLocaleString()} / {MAX_EXP.toLocaleString()}
-            </span>
+            <div className="relative" ref={expGuideRef}>
+              <span className="text-[9px] md:text-[10px] font-bold text-slate-600 dark:text-slate-400 tracking-wider uppercase inline-flex items-center gap-1">
+                XP {exp.toLocaleString()} / {MAX_EXP.toLocaleString()}
+                <button
+                  type="button"
+                  onClick={() => setExpGuideOpen((v) => !v)}
+                  aria-label="경험치 획득 경로 보기"
+                  aria-expanded={expGuideOpen}
+                  className="ml-0.5 text-slate-400 hover:text-[#1A237E] transition-colors leading-none"
+                >
+                  <span className="material-symbols-outlined text-[14px] md:text-[16px] align-middle">
+                    info
+                  </span>
+                </button>
+              </span>
+              {expGuideOpen && (
+                <div
+                  role="dialog"
+                  aria-label="경험치 획득 경로"
+                  className="absolute top-full right-0 mt-2 w-72 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-outline-variant/30 p-4 z-30 text-left normal-case tracking-normal"
+                >
+                  <h4 className="text-sm font-extrabold text-[#1A237E] mb-3 flex items-center gap-1.5">
+                    <span
+                      className="material-symbols-outlined text-base"
+                      style={{ fontVariationSettings: '"FILL" 1' }}
+                    >
+                      workspace_premium
+                    </span>
+                    경험치 획득 경로
+                  </h4>
+                  <ul className="space-y-2.5 text-xs text-on-surface-variant">
+                    <li className="flex gap-2">
+                      <span aria-hidden>📘</span>
+                      <div>
+                        <span className="font-bold text-on-surface">일일 퀴즈</span>
+                        <span className="text-on-surface-variant"> — 정답 1문제당 +10 EXP · 만점 보너스 +20</span>
+                      </div>
+                    </li>
+                    <li className="flex gap-2">
+                      <span aria-hidden>🎯</span>
+                      <div>
+                        <span className="font-bold text-on-surface">시뮬레이터 시즌</span>
+                        <span className="text-on-surface-variant"> — 시즌 완료 시 점수 기반 EXP</span>
+                      </div>
+                    </li>
+                    <li className="flex gap-2">
+                      <span aria-hidden>🔥</span>
+                      <div>
+                        <span className="font-bold text-on-surface">무한 챌린지</span>
+                        <span className="text-on-surface-variant"> — 최고 기록 갱신 시</span>
+                      </div>
+                    </li>
+                    <li className="flex gap-2">
+                      <span aria-hidden>📅</span>
+                      <div>
+                        <span className="font-bold text-on-surface">연속 streak</span>
+                        <span className="text-on-surface-variant"> — milestone(10·30·100일) 달성 보상</span>
+                      </div>
+                    </li>
+                  </ul>
+                  <p className="mt-3 pt-3 border-t border-outline-variant/20 text-[10px] text-on-surface-variant/70">
+                    ※ 정확한 보상 수치는 추후 안내 예정
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
           <div className="w-full h-3 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden shadow-inner">
             <div
@@ -293,23 +377,6 @@ export function Dashboard() {
               style={{ width: `${Math.min((exp / MAX_EXP) * 100, 100)}%` }}
             />
           </div>
-        </div>
-
-        <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-200/50 dark:border-slate-800/50">
-          <button
-            onClick={() => navigate('/dashboard/simulator')}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-800 border border-outline-variant/30 rounded-lg text-[9px] md:text-[11px] font-bold text-[#1A237E] dark:text-indigo-300 hover:bg-surface-container-low transition-colors shadow-sm"
-          >
-            <span className="material-symbols-outlined text-sm">edit_note</span>
-            시뮬레이터로 경험치 쌓기
-          </button>
-          <button
-            onClick={() => navigate('/dashboard/quiz')}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-800 border border-outline-variant/30 rounded-lg text-[9px] md:text-[11px] font-bold text-[#1A237E] dark:text-indigo-300 hover:bg-surface-container-low transition-colors shadow-sm"
-          >
-            <span className="material-symbols-outlined text-sm">quiz</span>
-            퀴즈로 경험치 쌓기
-          </button>
         </div>
       </section>
 
