@@ -5,6 +5,9 @@ from typing import Optional
 import random
 from db import models, schemas
 
+
+
+# ── 사용자 ───────────────────────────────────────────────────────────────────
 def get_user_by_kakao_id(db: Session, kakao_id: str):
     return db.query(models.User).filter(models.User.kakao_id == kakao_id).first()
 
@@ -22,6 +25,9 @@ def create_user(db: Session, kakao_id: str, nickname: str, profile_image: str):
     db.refresh(db_user)
     return db_user
 
+
+
+# ── 시장 지수 ────────────────────────────────────────────────────────────────
 def get_all_market_indices(db: Session):
     return db.query(models.MarketIndex).all()
  
@@ -45,6 +51,9 @@ def upsert_market_index(db: Session, name: str, data: dict, updated_at):
         db.add(row)
     db.commit()
 
+
+
+# ── 유저 레벨 ────────────────────────────────────────────────────────────────
 def get_user_level(db: Session, user_id: int):
     return db.query(models.UserLevel).filter(models.UserLevel.user_id == user_id).first()
 
@@ -57,9 +66,8 @@ def create_user_level(db: Session, user_id: int):
     return user_level
 
 
-# =====================================================================
-# 뉴스 조회 / 생성 (1~3단계 파이프라인 처리용)
-# =====================================================================
+
+# ── 뉴스 수집 파이프라인 ───────────────────────────────────────────────────────
 def get_news_by_link(db: Session, link: str):
     """[2단계 Deduplication] 링크 기반 중복 기사 검증"""
     return db.query(models.News).filter(models.News.link == link).first()
@@ -98,9 +106,8 @@ def get_view_counts_24h_map(db: Session, news_ids: list[int]) -> dict[int, int]:
     return {nid: cnt for nid, cnt in rows}
 
 
-# =====================================================================
-# 뉴스 조회수 (24시간 롤링 인기뉴스용)
-# =====================================================================
+
+# ── 뉴스 조회수 (24시간 롤링 인기뉴스) ───────────────────────────────────────
 def log_news_view(db: Session, news_id: int):
     """뉴스 클릭 1회 = 1행 insert"""
     view = models.NewsView(news_id=news_id)
@@ -136,13 +143,8 @@ def cleanup_old_news_views(db: Session):
     db.commit()
 
 
-# =====================================================================
-# 뉴스 삭제 (저장 후 3일이 지난 뉴스 데이터 삭제)
-# =====================================================================
-# =====================================================================
-# 게임 시뮬레이터
-# =====================================================================
 
+# ── 모의 투자 시뮬레이터 ──────────────────────────────────────────────────────
 def get_scenario_by_id(db: Session, scenario_id: int):
     return db.query(models.GameScenario).filter(models.GameScenario.id == scenario_id).first()
 
@@ -286,11 +288,8 @@ def get_rank_for_participation(db: Session, participation_id: int) -> dict | Non
     return {"rank": my_rank, "total": total_count, "percentile": percentile}
 
 
-# =====================================================================
-# 경제 퀴즈
-# =====================================================================
 
-
+# ── 경제 퀴즈 ────────────────────────────────────────────────────────────────
 def select_weighted_questions(db: Session, user_id: int, n: int = 6) -> list[models.QuizQuestion]:
     """매일 n개 문제 선택: 새로운 문제 4개 + 틀린 문제(가중치 높은) 2개
     - 틀린 문제가 2개 미만이면 새로운 문제로 채움
@@ -551,10 +550,8 @@ def get_quiz_ranking(db: Session, user_id: int, season: int = 1) -> dict:
     }
 
 
-# =====================================================================
-# 일일 퀴즈 완료
-# =====================================================================
 
+# ── 일일 퀴즈 완료 ───────────────────────────────────────────────────────────
 def get_daily_completion(db: Session, user_id: int, date: date_type) -> models.QuizDailyCompletion | None:
     return (
         db.query(models.QuizDailyCompletion)
@@ -603,14 +600,8 @@ def save_daily_completion(
 
 
 def delete_old_news(db: Session, days_to_keep: int = 3) -> int:
-    """
-    저장된 지 특정 일수(days_to_keep)가 지난 과거 뉴스 데이터를 DB에서 삭제합니다.
-    """
-    # 현재 UTC 시간 기준으로 3일 전 날짜 계산
+    """days_to_keep일 이상 지난 뉴스를 일괄 삭제한다."""
     cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_to_keep)
-    
-    # 3일보다 이전에 생성된(created_at < cutoff_date) 데이터 일괄 삭제
     deleted_count = db.query(models.News).filter(models.News.created_at < cutoff_date).delete(synchronize_session=False)
     db.commit()
-    
     return deleted_count

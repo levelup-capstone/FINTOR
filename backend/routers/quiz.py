@@ -12,6 +12,8 @@ KST = timezone(timedelta(hours=9))
 router = APIRouter()
 
 
+
+# ── 일일 퀴즈 ─────────────────────────────────────────────────────────────────
 @router.get("/api/quiz/today")
 def get_today_quiz(
     db: Session = Depends(get_db),
@@ -21,6 +23,7 @@ def get_today_quiz(
     completion = crud.get_daily_completion(db, current_user.id, today_kst)
     current_streak = crud.get_current_streak(db, current_user.id, today_kst)
 
+    # 틀린 문제에 높은 가중치를 부여하여 복습 효과를 높이는 방식으로 6문제 선정
     questions = crud.select_weighted_questions(db, current_user.id, n=6)
     if not questions:
         return JSONResponse(status_code=404, content={"success": False, "message": "퀴즈 문제를 불러올 수 없습니다."})
@@ -85,6 +88,7 @@ def submit_quiz(
         return JSONResponse(status_code=404, content={"success": False, "message": "문제를 찾을 수 없습니다."})
 
     is_correct = req.selected_answer.strip() == question.answer.strip()
+    # 정답 여부를 QuizUserProgress에 반영하여 가중치 갱신 (일일 퀴즈 전용)
     result = crud.submit_quiz_answer(
         db,
         user_id=current_user.id,
@@ -105,6 +109,8 @@ def submit_quiz(
     }
 
 
+
+# ── 무한 퀴즈 ─────────────────────────────────────────────────────────────────
 @router.post("/api/quiz/{question_id}/check")
 def check_quiz_answer(
     question_id: int,
@@ -112,7 +118,7 @@ def check_quiz_answer(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    """정답 여부 확인만 - QuizUserProgress 미업데이트 (무한 퀴즈 전용)"""
+    # 정답 확인만 수행 — QuizUserProgress를 건드리지 않아 일일 퀴즈 가중치에 영향 없음
     question = crud.get_quiz_question_by_id(db, question_id)
     if not question:
         return JSONResponse(status_code=404, content={"success": False, "message": "문제를 찾을 수 없습니다."})
@@ -130,50 +136,12 @@ def check_quiz_answer(
     }
 
 
-@router.get("/api/quiz/status")
-def get_quiz_status(
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
-):
-    status = crud.get_quiz_status(db, current_user.id)
-    today_kst = datetime.now(KST).date()
-    completion = crud.get_daily_completion(db, current_user.id, today_kst)
-    streak = crud.get_current_streak(db, current_user.id, today_kst)
-    return {
-        "success": True,
-        "data": {
-            **status,
-            "streak": streak,
-            "today_done": completion is not None,
-            "today_completion": {
-                "correct_count": completion.correct_count,
-                "total":         completion.total,
-                "results":       completion.results,
-            } if completion else None,
-        },
-    }
-
-
-# TODO: 배포 전 이 엔드포인트 제거
-@router.post("/api/quiz/dev/reset-daily")
-def dev_reset_daily_quiz(
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
-):
-    today_kst = datetime.now(KST).date()
-    completion = crud.get_daily_completion(db, current_user.id, today_kst)
-    if completion:
-        db.delete(completion)
-        db.commit()
-        return {"success": True, "data": {"deleted": True}}
-    return {"success": True, "data": {"deleted": False}}
-
-
 @router.get("/api/quiz/pool")
 def get_quiz_pool(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    # 무한 퀴즈용 문제 풀 — 일일 퀴즈(6문제)보다 많은 20문제 반환
     questions = crud.select_weighted_questions(db, current_user.id, n=20)
     items = [
         {
@@ -199,6 +167,32 @@ def submit_quiz_infinite_score(
     return {"success": True, "data": result}
 
 
+
+# ── 현황 및 랭킹 ───────────────────────────────────────────────────────────────
+@router.get("/api/quiz/status")
+def get_quiz_status(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    status = crud.get_quiz_status(db, current_user.id)
+    today_kst = datetime.now(KST).date()
+    completion = crud.get_daily_completion(db, current_user.id, today_kst)
+    streak = crud.get_current_streak(db, current_user.id, today_kst)
+    return {
+        "success": True,
+        "data": {
+            **status,
+            "streak": streak,
+            "today_done": completion is not None,
+            "today_completion": {
+                "correct_count": completion.correct_count,
+                "total":         completion.total,
+                "results":       completion.results,
+            } if completion else None,
+        },
+    }
+
+
 @router.get("/api/quiz/ranking")
 def get_quiz_ranking_endpoint(
     db: Session = Depends(get_db),
@@ -206,3 +200,18 @@ def get_quiz_ranking_endpoint(
 ):
     data = crud.get_quiz_ranking(db, current_user.id)
     return {"success": True, "data": data}
+
+
+# TODO: 배포 전 이 엔드포인트 제거
+@router.post("/api/quiz/dev/reset-daily")
+def dev_reset_daily_quiz(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    today_kst = datetime.now(KST).date()
+    completion = crud.get_daily_completion(db, current_user.id, today_kst)
+    if completion:
+        db.delete(completion)
+        db.commit()
+        return {"success": True, "data": {"deleted": True}}
+    return {"success": True, "data": {"deleted": False}}

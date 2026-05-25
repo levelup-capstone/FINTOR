@@ -4,6 +4,7 @@ from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 from db.session import Base
 
+# ── 사용자 ───────────────────────────────────────────────────────────────────
 class User(Base):
     __tablename__ = "users"
 
@@ -14,6 +15,7 @@ class User(Base):
     survey = relationship("Survey", back_populates="owner", uselist=False, cascade="all, delete-orphan")
 
 
+# ── 투자 성향 설문 ────────────────────────────────────────────────────────────
 class Survey(Base):
     __tablename__ = "surveys"
 
@@ -31,6 +33,7 @@ class Survey(Base):
     created_at            = Column(DateTime, default=datetime.utcnow)
     owner                 = relationship("User", back_populates="survey")
 
+# ── 시장 지수 ────────────────────────────────────────────────────────────────
 class MarketIndex(Base):
     __tablename__ = "market_indices"
  
@@ -42,6 +45,7 @@ class MarketIndex(Base):
     source       = Column(String, default="")               # "kis", "finnhub", "yfinance"
     updated_at   = Column(DateTime(timezone=True))
 
+# ── 유저 레벨 ────────────────────────────────────────────────────────────────
 class UserLevel(Base):
     __tablename__ = "user_levels"
 
@@ -53,6 +57,7 @@ class UserLevel(Base):
                         onupdate=lambda: datetime.now(timezone.utc))
 
 
+# ── 뉴스 ─────────────────────────────────────────────────────────────────────
 class News(Base):
     __tablename__ = "news"
 
@@ -79,9 +84,7 @@ class NewsView(Base):
                        index=True)
 
 
-# ──────────────────────────────────────────────
-# 모의 투자 시뮬레이터
-# ──────────────────────────────────────────────
+# ── 모의 투자 시뮬레이터 ──────────────────────────────────────────────────────
 
 class GameScenario(Base):
     """난이도별 시나리오 템플릿. 유저가 버튼을 눌러 시작하면 GameParticipation 생성."""
@@ -202,9 +205,7 @@ class GameResult(Base):
     participation = relationship("GameParticipation", back_populates="result")
 
 
-# ──────────────────────────────────────────────
-# 경제 퀴즈
-# ──────────────────────────────────────────────
+# ── 경제 퀴즈 ────────────────────────────────────────────────────────────────
 
 class QuizQuestion(Base):
     """퀴즈 문제 저장 (150문제 시드)"""

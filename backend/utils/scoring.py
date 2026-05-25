@@ -12,8 +12,11 @@
 
 from db import schemas
 
+
+
 # ── 투자 성향 설문 채점 ────────────────────────────────────────────────
 
+# 각 항목 답변값 → 점수 매핑 (공격적일수록 높은 점수)
 RISK_TYPE_SCORE = {"v-low": 1, "low": 4, "high": 8, "v-high": 12}
 EXPERIENCE_SCORE = {"none": 0, "under-6m": 1, "6m-1y": 2, "1y-3y": 3, "3y-5y": 4, "over-5y": 5}
 PERIOD_SCORE = {"long": 1, "m-long": 2, "s-mid": 3, "short": 4}
@@ -23,6 +26,7 @@ GOAL_SCORE = {
     "growth": 3,
 }
 AGE_SCORE = {"under-20": 2, "20y": 2, "30y": 1, "40y": 1, "50y": 0, "over-60": 0}
+# 자산 많을수록 손실 감당 여력이 낮아지는 역방향 설계 (보수적 기여)
 ASSETS_SCORE = {
     "under-500": 2, "500-1000": 1,
     "1000-5000": 0, "5000-1m": 0,
@@ -49,6 +53,7 @@ def calc_risk_score(survey: "schemas.SurveyCreate") -> int:
 
 
 def score_to_level(score: int) -> int:
+    # 이론상 최소 0점 ~ 최대 28점, 구간을 5등분하여 레벨 부여
     if score <= 6:    return 1
     elif score <= 12: return 2
     elif score <= 18: return 3
@@ -58,8 +63,8 @@ def score_to_level(score: int) -> int:
 TOTAL_DAYS = 7
 
 
-# ── 보조 함수 ──────────────────────────────────────────────────────────────
 
+# ── 보조 함수 ──────────────────────────────────────────────────────────────
 def get_effective_allocations(allocations: list[dict]) -> dict[int, dict]:
     """
     누락된 날을 선조 배분으로 채워 {day_index: alloc_dict} 반환.
@@ -94,8 +99,8 @@ def _safe_asset_weight(alloc: dict, asset_list: list[str]) -> float:
     return sum(alloc.get(a, 0) for a in asset_list)
 
 
-# ── A. 수익률 점수 (30점) ──────────────────────────────────────────────────
 
+# ── A. 수익률 점수 (30점) ──────────────────────────────────────────────────
 def score_a_return(user_return: float, correct_return: float) -> float:
     """정답 전략 수익률 대비 사용자 수익률 차이로 점수 산출."""
     delta = user_return - correct_return
@@ -106,8 +111,8 @@ def score_a_return(user_return: float, correct_return: float) -> float:
     return 5.0
 
 
-# ── B. 시나리오 적응 점수 (30점) ──────────────────────────────────────────
 
+# ── B. 시나리오 적응 점수 (30점) ──────────────────────────────────────────
 def score_b1_correct_asset_holding(effective: dict[int, dict], correct_assets: list[str]) -> float:
     """B1: 정답 자산 평균 보유 비중 (12점)."""
     if not correct_assets:
@@ -169,8 +174,8 @@ def score_b_adaptation(effective: dict[int, dict], scenario_meta: dict) -> float
     return b1 + b2 + b3
 
 
-# ── C. 분산투자 점수 (20점) ───────────────────────────────────────────────
 
+# ── C. 분산투자 점수 (20점) ───────────────────────────────────────────────
 def score_c_diversity(effective: dict[int, dict]) -> float:
     """C: 7일 평균 보유 자산 수 기준 점수 (20점)."""
     total_held = 0
@@ -191,8 +196,8 @@ def score_c_diversity(effective: dict[int, dict]) -> float:
     return 0.0
 
 
-# ── D. 안정성 점수 (20점) ─────────────────────────────────────────────────
 
+# ── D. 안정성 점수 (20점) ─────────────────────────────────────────────────
 def score_d1_volatility(effective: dict[int, dict]) -> float:
     """D1: 일일 포트폴리오 하락 변동률 평균 (12점)."""
     has_data = False
@@ -244,8 +249,8 @@ def score_d_stability(effective: dict[int, dict], scenario_meta: dict) -> float:
     return d1 + d2
 
 
-# ── 메인 산출 함수 ─────────────────────────────────────────────────────────
 
+# ── 메인 산출 함수 ─────────────────────────────────────────────────────────
 def calculate_score(allocations: list, scenario) -> dict:
     """
     시즌 종료 시 전체 점수를 산출하여 dict로 반환.
@@ -273,7 +278,7 @@ def calculate_score(allocations: list, scenario) -> dict:
 
     effective = get_effective_allocations(alloc_dicts)
 
-    # 한 번도 배분하지 않은 경우: 시나리오 적응 점수 0점
+    # 단 한 번도 배분하지 않은 경우 B점수 0점 처리 (수익률·안정성 점수는 정상 산출)
     never_allocated = not any(
         bool(a.get("allocations")) for a in alloc_dicts
     )

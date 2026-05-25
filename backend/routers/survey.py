@@ -17,6 +17,7 @@ def submit_survey(
     current_user: models.User = Depends(get_current_user),
 ):
     try:
+        # 설문은 1인 1회만 허용 — 중복 제출 차단
         existing_survey = db.query(models.Survey).filter(models.Survey.user_id == current_user.id).first()
         if existing_survey:
             return JSONResponse(status_code=400, content={
@@ -25,6 +26,7 @@ def submit_survey(
                 "data": None,
             })
 
+        # 답변 점수 합산 → 위험 성향 레벨(1~5) 산출
         score      = calc_risk_score(survey_data)
         risk_level = score_to_level(score)
         risk_label = RISK_LABELS[risk_level]
@@ -66,6 +68,7 @@ def get_user_level(user_id: int, db: Session = Depends(get_db)):
 
     user_level = crud.get_user_level(db, user_id=user_id)
 
+    # 레벨 레코드가 없으면 초기값(lv.1, exp=0)으로 생성
     if not user_level:
         user_level = crud.create_user_level(db, user_id=user_id)
 

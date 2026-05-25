@@ -12,11 +12,19 @@ from db.session import get_db
 
 KST = timezone(timedelta(hours=9))
 
+
+
+# ── 외부 API 환경변수 ──────────────────────────────────────────────────────────
 KIS_BASE_URL = os.getenv("KIS_BASE_URL")
 KIS_APP_KEY = os.getenv("KIS_APP_KEY")
 KIS_APP_SECRET = os.getenv("KIS_APP_SECRET")
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 
+
+
+# ── 심볼 매핑 테이블 ───────────────────────────────────────────────────────────
+
+# KIS: 국내 지수 (한투 API 내부 코드)
 KIS_DOMESTIC_SYMBOLS = {
     "KOSPI":     "0001",
     "KOSDAQ":    "1001",
@@ -26,6 +34,7 @@ KIS_DOMESTIC_SYMBOLS = {
     "BBIG":      "4411",
 }
 
+# Finnhub: 해외 주요 지수 1차 소스 (실패 시 yfinance fallback)
 FINNHUB_SYMBOLS = {
     "SP500":     "^GSPC",
     "NASDAQ100": "^NDX",
@@ -37,6 +46,7 @@ FINNHUB_SYMBOLS = {
     "US10Y":     "^TNX",
 }
 
+# yfinance: Finnhub가 다루지 못하는 지수·환율·원자재·암호화폐 보완
 YFINANCE_SYMBOLS = {
     "SP500":       "^GSPC",
     "NASDAQ100":   "^NDX",
@@ -64,10 +74,12 @@ YFINANCE_SYMBOLS = {
     "BTC_KRW":     "BTC-KRW",
 }
 
+# KIS 액세스 토큰 인메모리 캐시 — 프로세스 재시작 전까지 재사용
 _kis_token_cache = {"token": None, "expires_at": 0}
 
 finnhub_client = finnhub.Client(api_key=FINNHUB_API_KEY)
 
+# yfinance 기본 UA가 Yahoo 서버에서 차단되는 경우가 있어 브라우저 UA로 교체
 yf_session = ReqSession()
 yf_session.headers.update({
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -76,7 +88,10 @@ yf_session.headers.update({
 })
 
 
+
+# ── KIS (한국투자증권) ─────────────────────────────────────────────────────────
 def get_kis_access_token():
+    # 유효한 캐시가 있으면 재사용 (KIS 토큰 만료는 24시간, 1시간 여유를 두고 23시간으로 설정)
     if _kis_token_cache["token"] and time.time() < _kis_token_cache["expires_at"]:
         return _kis_token_cache["token"]
 
@@ -108,7 +123,7 @@ def fetch_kis_domestic(symb: str, token: str):
         "appkey": KIS_APP_KEY,
         "appsecret": KIS_APP_SECRET,
         "custtype": "P",
-        "tr_id": "FHPUP02100000",
+        "tr_id": "FHPUP02100000",  # 국내 지수 현재가 조회 TR ID
     }
     url = f"{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-index-price"
     params = {"FID_COND_MRKT_DIV_CODE": "U", "FID_INPUT_ISCD": symb}
@@ -126,6 +141,8 @@ def fetch_kis_domestic(symb: str, token: str):
         return None
 
 
+
+# ── Finnhub ───────────────────────────────────────────────────────────────────
 def fetch_finnhub_quote(name: str, symbol: str) -> dict | None:
     try:
         data = finnhub_client.quote(symbol)
@@ -133,6 +150,7 @@ def fetch_finnhub_quote(name: str, symbol: str) -> dict | None:
         change  = float(data.get("d", 0) or 0)
         rate    = float(data.get("dp", 0) or 0)
 
+        # current가 0이면 Finnhub에서 해당 심볼을 지원하지 않는 것으로 간주
         if current == 0:
             print(f"⚠️ Finnhub [{name}] 데이터 없음 → yfinance fallback")
             return None
@@ -148,12 +166,15 @@ def fetch_finnhub_quote(name: str, symbol: str) -> dict | None:
         return None
 
 
+
+# ── yfinance ──────────────────────────────────────────────────────────────────
 def fetch_all_yfinance(symbols_map: dict) -> dict:
     results = {}
     try:
         symbol_list = list(symbols_map.values())
         name_by_symbol = {v: k for k, v in symbols_map.items()}
 
+        # 종목을 개별 호출하지 않고 배치 다운로드로 API 호출 최소화
         df = yf.download(
             tickers=symbol_list,
             period="5d",
@@ -172,6 +193,7 @@ def fetch_all_yfinance(symbols_map: dict) -> dict:
             if not name:
                 continue
             try:
+                # 단일 종목 다운로드 시 ticker 레벨 컬럼이 없으므로 분기 처리
                 hist = df[symbol] if len(symbol_list) > 1 else df
                 hist = hist.dropna(subset=["Close"])
                 if len(hist) < 1:
@@ -194,7 +216,10 @@ def fetch_all_yfinance(symbols_map: dict) -> dict:
     return results
 
 
+
+# ── 수집 진입점 ────────────────────────────────────────────────────────────────
 def collect_and_save_market_data():
+    """수집 우선순위: KIS(국내) → Finnhub(해외 1차) → yfinance(fallback)"""
     print(f"🔄 시장 데이터 수집 시작 ({datetime.now(KST).strftime('%H:%M:%S')} KST)")
     db: Session = next(get_db())
 
@@ -208,7 +233,7 @@ def collect_and_save_market_data():
                 data = fetch_kis_domestic(symb, token)
                 if data:
                     all_results[name] = data
-                time.sleep(0.05)
+                time.sleep(0.05)  # KIS API 레이트 리밋 방지
         else:
             print("⚠️ KIS 토큰 발급 실패 - 국내 지수 스킵")
 
@@ -216,8 +241,9 @@ def collect_and_save_market_data():
             data = fetch_finnhub_quote(name, symbol)
             if data:
                 all_results[name] = data
-            time.sleep(0.05)
+            time.sleep(0.05)  # Finnhub API 레이트 리밋 방지
 
+        # Finnhub에서 성공한 심볼은 yfinance 호출에서 제외
         yf_needed = {k: v for k, v in YFINANCE_SYMBOLS.items()
                      if not (k in all_results and all_results[k].get("source") == "finnhub")}
         yf_results = fetch_all_yfinance(yf_needed)

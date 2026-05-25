@@ -1,7 +1,9 @@
 from pydantic import BaseModel
 from typing import Optional, List
 
-# 1. 인증(Auth) 관련 스키마
+
+
+# ── 인증 ─────────────────────────────────────────────────────────────────────
 class KakaoLoginRequest(BaseModel):
     code: str
 
@@ -19,7 +21,9 @@ class LoginResponse(BaseModel):
     message: str
     data: Optional[LoginData] = None
 
-# 2. 설문조사(Survey) 관련 스키마
+
+
+# ── 투자 성향 설문 ────────────────────────────────────────────────────────────
 class SurveyCreate(BaseModel):
     age_group: str
     investment_experience: str
@@ -39,12 +43,16 @@ class SurveyResponse(BaseModel):
     message: Optional[str] = None
     data: Optional[SurveyResponseData] = None
 
-# 3. 레벨(Level) 관련 스키마
+
+
+# ── 유저 레벨 ────────────────────────────────────────────────────────────────
 class UserLevelResponse(BaseModel):
     success: bool
     data: Optional[dict] = None
 
-# 5. 게임 시뮬레이터 관련 스키마
+
+
+# ── 모의 투자 시뮬레이터 ──────────────────────────────────────────────────────
 class GameStartRequest(BaseModel):
     scenario_id: int
 
@@ -97,7 +105,8 @@ class GameScoreResponse(BaseModel):
     data:    Optional[GameScoreData] = None
 
 
-# 6. 퀴즈 관련 스키마
+
+# ── 퀴즈 ─────────────────────────────────────────────────────────────────────
 class QuizQuestionItem(BaseModel):
     id:          int
     category:    str

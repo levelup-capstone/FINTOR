@@ -8,6 +8,8 @@ from db.session import get_db
 router = APIRouter()
 
 
+
+# ── 시장 지표 ─────────────────────────────────────────────────────────────────
 @router.get("/api/v1/market/indices")
 def get_market_indices(db: Session = Depends(get_db)):
     rows = crud.get_all_market_indices(db)
@@ -25,6 +27,7 @@ def get_market_indices(db: Session = Depends(get_db)):
             "change_value": row.change_value,
             "source":       row.source,
         }
+        # 여러 지수 중 가장 최근 업데이트 시각을 응답에 포함
         if latest_updated_at is None or row.updated_at > latest_updated_at:
             latest_updated_at = row.updated_at
 
@@ -36,9 +39,12 @@ def get_market_indices(db: Session = Depends(get_db)):
     }
 
 
+
+# ── 뉴스 ──────────────────────────────────────────────────────────────────────
 @router.get("/api/v1/market/news")
 def get_market_news(db: Session = Depends(get_db)):
     news_list = crud.get_latest_news(db)
+    # 뉴스 목록과 조회수를 별도 쿼리로 분리 후 매핑 (N+1 방지)
     view_map = crud.get_view_counts_24h_map(db, [n.id for n in news_list])
     return {
         "success": True,
@@ -63,6 +69,7 @@ def get_market_news(db: Session = Depends(get_db)):
 
 @router.get("/api/v1/market/news/popular")
 def get_popular_news(db: Session = Depends(get_db)):
+    # 24시간 내 조회수 기준 상위 5개 — 대시보드 인기뉴스 섹션에서 사용
     rows = crud.get_popular_news_24h(db, limit=5)
     return {
         "success": True,

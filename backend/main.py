@@ -15,13 +15,20 @@ from routers.game import _game_daily_settlement
 
 from routers import auth, market, survey, game, quiz, user
 
-# DB 테이블 생성
+
+
+# ── DB 초기화 ─────────────────────────────────────────────────────────────────
+# models.py에 정의된 모든 테이블을 DB에 생성 (이미 존재하면 스킵)
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Fintor Auth Server")
 
 KST = timezone(timedelta(hours=9))
 
+
+
+# ── CORS 설정 ─────────────────────────────────────────────────────────────────
+# 프론트엔드(localhost:3000)에서의 요청만 허용
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],
@@ -30,6 +37,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+
+# ── 라우터 등록 ───────────────────────────────────────────────────────────────
 app.include_router(auth.router)
 app.include_router(market.router)
 app.include_router(survey.router)
@@ -37,6 +47,9 @@ app.include_router(game.router)
 app.include_router(quiz.router)
 app.include_router(user.router)
 
+
+
+# ── 스케줄러 ──────────────────────────────────────────────────────────────────
 scheduler = BackgroundScheduler()
 
 
@@ -44,6 +57,7 @@ scheduler = BackgroundScheduler()
 def startup_event():
     print("🏢 운영 모드입니다.")
 
+    # 시드 데이터: 게임 시나리오·퀴즈 문제가 없으면 초기 데이터 삽입
     run_game_seed()
     db = next(get_db())
     try:
@@ -51,9 +65,11 @@ def startup_event():
     finally:
         db.close()
 
+    # 서버 시작 직후 시장 데이터·뉴스를 즉시 1회 수집 (스케줄 첫 실행 전 공백 방지)
     threading.Thread(target=collect_and_save_market_data, daemon=True).start()
     threading.Thread(target=run_news_pipeline, daemon=True).start()
 
+    # 주기적 수집: 시장 지수 5분 / 뉴스 30분 / 게임 일일 정산 KST 자정
     scheduler.add_job(collect_and_save_market_data, "interval", minutes=5)
     scheduler.add_job(run_news_pipeline, "interval", minutes=30)
     scheduler.add_job(_game_daily_settlement, "cron", hour=0, minute=0, timezone=KST)

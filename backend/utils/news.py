@@ -15,14 +15,21 @@ from db.session import get_db
 
 KST = timezone(timedelta(hours=9))
 
+
+
+# ── 외부 API 환경변수 ──────────────────────────────────────────────────────────
 NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID")
 NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
+# TF-IDF 코사인 유사도가 이 값 이상이면 중복 기사로 판단 (실험적으로 결정한 임계값)
 TFIDF_SIMILARITY_THRESHOLD = 0.35
 
 
+
+# ── 전처리 유틸 ────────────────────────────────────────────────────────────────
 def clean_html(raw_html: str) -> str:
+    # 네이버 검색 API 응답에 HTML 태그와 엔티티가 혼재하여 제거 필요
     clean_text = re.sub(r'<.*?>', '', raw_html)
     clean_text = re.sub(r'&quot;|&amp;|&lt;|&gt;|&apos;', ' ', clean_text)
     return clean_text.strip()
@@ -34,6 +41,7 @@ def scrape_naver_news_body(url: str) -> str:
         res = requests.get(url, headers=headers, timeout=5)
         if res.status_code == 200:
             soup = BeautifulSoup(res.text, "lxml")
+            # #dic_area는 네이버 뉴스 본문 컨테이너의 고정 ID
             body_area = soup.select_one("#dic_area")
             if body_area:
                 return body_area.get_text(separator=" ", strip=True)
@@ -43,11 +51,14 @@ def scrape_naver_news_body(url: str) -> str:
         return ""
 
 
+
+# ── AI 분석 ────────────────────────────────────────────────────────────────────
 def analyze_news_with_gpt(title: str, full_text: str) -> dict:
     if not OPENAI_API_KEY:
         return {"category": "오류", "sentiment": "중립", "reason": "API 키 누락"}
 
     client = OpenAI(api_key=OPENAI_API_KEY)
+    # GPT 입력 토큰 비용 절감을 위해 본문을 3000자로 제한
     truncated_text = full_text[:3000]
 
     prompt = f"""당신은 전문 금융 애널리스트입니다.
@@ -77,13 +88,18 @@ def analyze_news_with_gpt(title: str, full_text: str) -> dict:
         return {"category": "오류", "sentiment": "중립", "reason": "분석 실패"}
 
 
+
+# ── TF-IDF 중복 검사 ──────────────────────────────────────────────────────────
 def _build_tfidf(titles: list[str]):
+    # 한국어 형태소 분석 없이도 동작하도록 char_wb(문자 단위) 2-3그램 사용
     if not titles:
         return None, None
     vec = TfidfVectorizer(analyzer="char_wb", ngram_range=(2, 3))
     return vec, vec.fit_transform(titles)
 
 
+
+# ── 뉴스 수집 파이프라인 ───────────────────────────────────────────────────────
 def run_news_pipeline():
     print(f"📰 뉴스 파이프라인 가동 ({datetime.now(KST).strftime('%H:%M:%S')} KST)", flush=True)
     db: Session = next(get_db())
@@ -98,6 +114,7 @@ def run_news_pipeline():
         existing_news: list[tuple[int, str]] = crud.get_all_news_titles(db)
         existing_titles: list[str] = [title for _, title in existing_news]
 
+        # 파이프라인 시작 시 DB 기존 제목 전체를 벡터화하여 중복 검사 기준선 확보
         vectorizer, tfidf_matrix = _build_tfidf(existing_titles)
         print(f"📋 기존 뉴스 {len(existing_titles)}개 TF-IDF 벡터화 완료 (중복 검사 기준)", flush=True)
 
@@ -132,13 +149,16 @@ def run_news_pipeline():
 
                 try:
                     pub_date = datetime.strptime(pub_date_str, "%a, %d %b %Y %H:%M:%S %z")
+                    # 오늘 날짜(UTC 기준) 이전 기사는 수집 대상에서 제외
                     if pub_date < start_of_today:
                         continue
                 except ValueError:
                     continue
 
+                # 네이버 뉴스 직접 링크(n.news.naver.com)만 허용 — 외부 언론사 링크 제외
                 if "n.news.naver.com" not in link:
                     continue
+                # sid=101은 경제 섹션 코드 — 다른 섹션 뉴스 필터링
                 if "sid=101" not in link:
                     continue
 
@@ -168,6 +188,7 @@ def run_news_pipeline():
 
                 full_text = scrape_naver_news_body(link)
                 if not full_text:
+                    # 본문 스크래핑 실패 시 API 요약문으로 대체
                     full_text = description
 
                 print(f"🤖 뉴스 본문 분석 중 [{title}]", flush=True)
@@ -189,13 +210,14 @@ def run_news_pipeline():
                 }
 
                 saved_news = crud.create_news(db, news_data)
+                # 새로 저장한 기사를 즉시 반영하여 이후 수집 기사의 중복 검사에 포함
                 existing_news.append((saved_news.id, title))
                 existing_titles.append(title)
                 vectorizer, tfidf_matrix = _build_tfidf(existing_titles)
                 total_saved += 1
                 print(f"✅ 뉴스 적재 완료 [{keyword}] - {ai_result.get('sentiment')}: {ai_result.get('reason')}", flush=True)
 
-                time.sleep(2.1)
+                time.sleep(2.1)  # GPT API 레이트 리밋(분당 요청 수) 방지
 
             total_skip = link_skip_count + title_skip_count
             if total_skip > 0:

@@ -17,6 +17,9 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 router = APIRouter()
 
 
+
+# ── 내부 유틸 함수 ─────────────────────────────────────────────────────────────
+
 def _calc_today_index(start_date, total_days: int = 7) -> int:
     """start_date 기준 경과일 → 1~7 (초과 시 total_days 고정)"""
     now = datetime.now(KST)
@@ -54,6 +57,7 @@ def _calc_portfolio_value(
             continue
         factor += (ratio / 100) * (today_price / prev_price)
         leftover_ratio -= ratio
+    # 미배분 비율은 현금으로 간주하여 수익률 변동 없이 유지
     factor += max(leftover_ratio, 0) / 100
     return round(prev_value * factor, 2)
 
@@ -79,6 +83,7 @@ def _game_daily_settlement():
                 skipped += 1
                 continue
 
+            # 가장 최근 배분 기록을 역순으로 탐색 (중간 날짜를 건너뛴 경우 대비)
             ancestor_alloc = None
             for d in range(today_idx - 1, 0, -1):
                 a = crud.get_allocation_by_day(db, p.id, d)
@@ -96,6 +101,7 @@ def _game_daily_settlement():
                 prices_map.setdefault(row.asset, [None] * 7)
                 prices_map[row.asset][row.day_index - 1] = row.price
 
+            # ancestor 이후 누락된 날짜를 순차 소급 정산
             running_value = ancestor_alloc.portfolio_value
             for d in range(ancestor_alloc.day_index + 1, today_idx + 1):
                 running_value = _calc_portfolio_value(
@@ -117,6 +123,9 @@ def _game_daily_settlement():
     finally:
         db.close()
 
+
+
+# ── 게임 참여 관리 ─────────────────────────────────────────────────────────────
 
 @router.get("/api/game/my-participation")
 def get_my_participation(
@@ -158,6 +167,7 @@ def start_game(
     if not scenario:
         return JSONResponse(status_code=404, content={"success": False, "message": "시나리오를 찾을 수 없습니다."})
 
+    # 같은 시나리오에 이미 참여 중이면 기존 participation 반환 (멱등성 보장)
     existing = crud.get_active_participation(db, current_user.id)
     if existing and existing.scenario_id == req.scenario_id:
         return {
@@ -205,6 +215,8 @@ def dev_reset_all_participations(
     return {"success": True, "data": {"deleted_count": deleted_count}}
 
 
+
+# ── 게임 현황 조회 ─────────────────────────────────────────────────────────────
 @router.get("/api/game/participation/{participation_id}")
 def get_participation(
     participation_id: int,
@@ -218,12 +230,14 @@ def get_participation(
     scenario  = p.scenario
     today_idx = _calc_today_index(p.start_date)
 
+    # 가격 데이터를 {자산명: [day1가격, ..., day7가격]} 형태로 재구성
     prices_rows = crud.get_prices_by_scenario(db, scenario.id)
     prices_map: dict[str, list] = {}
     for row in prices_rows:
         prices_map.setdefault(row.asset, [None] * 7)
         prices_map[row.asset][row.day_index - 1] = row.price
 
+    # 오늘까지 공개된 매크로 지표만 반환 (미래 정보 차단)
     macros_rows = crud.get_macros_by_scenario(db, scenario.id)
     macros = [
         {"day_index": m.day_index, "cpi": m.cpi, "interest_rate": m.interest_rate,
@@ -247,6 +261,7 @@ def get_participation(
         for a in alloc_rows
     ]
 
+    # 마지막 확정 배분 이후 오늘까지 누락된 날을 실시간으로 평가액 계산
     latest_alloc = alloc_rows[-1] if alloc_rows else None
     if latest_alloc:
         current_value = latest_alloc.portfolio_value
@@ -284,6 +299,8 @@ def get_participation(
     }
 
 
+
+# ── 배분 확정 (매매) ───────────────────────────────────────────────────────────
 @router.post("/api/game/participation/{participation_id}/allocate")
 def allocate_game(
     participation_id: int,
@@ -309,6 +326,7 @@ def allocate_game(
         prices_map.setdefault(row.asset, [None] * 7)
         prices_map[row.asset][row.day_index - 1] = row.price
 
+    # 오늘 배분 전 이전 확정 기록이 있으면 그 이후 누락 날짜를 소급 정산 후 오늘 평가액 산출
     ancestor_alloc = None
     if today_idx > 1:
         for d in range(today_idx - 1, 0, -1):
@@ -331,6 +349,7 @@ def allocate_game(
             p.initial_cash, running_value, ancestor_alloc.allocations, prices_map, today_idx
         )
     else:
+        # Day1 최초 배분: 아직 가격 변동 없으므로 원금 그대로
         portfolio_value = p.initial_cash
     return_rate = round((portfolio_value - p.initial_cash) / p.initial_cash * 100, 2)
 
@@ -360,6 +379,8 @@ def allocate_game(
     }
 
 
+
+# ── 게임 결과 / 리뷰 ───────────────────────────────────────────────────────────
 @router.get("/api/game/participation/{participation_id}/score")
 def get_game_score(
     participation_id: int,
@@ -459,6 +480,7 @@ tags와 memo는 투자자의 당일 판단 근거입니다. 이를 반드시 피
   "overall_review": "전반적인 투자 스타일 평가와 다음 시즌을 위한 실질적 조언 (금액 언급 금지)"
 }}"""
 
+    # AI 리뷰는 생성 비용이 크므로 한 번 생성된 결과를 feedback_text에 캐싱
     if result and result.feedback_text:
         try:
             cached = json.loads(result.feedback_text)

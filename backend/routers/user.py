@@ -32,7 +32,7 @@ def update_nickname(
         raise HTTPException(status_code=400, detail="닉네임은 20자 이하여야 합니다.")
     current_user.nickname = nickname
     db.commit()
-    db.refresh(current_user)
+    db.refresh(current_user)  # commit 후 최신 값으로 갱신
     return {"success": True, "data": {"nickname": current_user.nickname}}
 
 
@@ -41,6 +41,7 @@ def delete_account(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    # cascade 설정으로 연관 데이터(설문, 게임 참여 등)가 함께 삭제됨
     db.delete(current_user)
     db.commit()
     return {"success": True, "data": {"deleted": True}}
