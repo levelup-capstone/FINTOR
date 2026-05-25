@@ -156,7 +156,7 @@ export function News() {
   return (
     <div className="flex-1 space-y-12 animate-in fade-in duration-300 pb-12 w-full">
       {/* Trending News */}
-      <section className="space-y-5">
+      <section data-tour="news-grid" className="space-y-5">
         <div className="flex items-center gap-2">
           <div className="bg-orange-100 p-2 rounded-lg text-orange-600">
             <Flame className="w-5 h-5 fill-current" />

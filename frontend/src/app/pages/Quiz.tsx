@@ -162,7 +162,7 @@ export function Quiz() {
 
   return (
     <div className="flex flex-col gap-8 max-w-3xl mx-auto w-full">
-      <section>
+      <section data-tour="daily-quiz-card">
         {!dailyResult && !solving && (
           <DailyStart streak={streak} accuracy={accuracy} onStart={startDaily} loading={quizLoading} />
         )}
@@ -426,7 +426,7 @@ function SeasonChallengeCard({
   onRanking: () => void;
 }) {
   return (
-    <div className="bg-surface-container-low rounded-2xl border border-outline-variant/50 p-6 md:p-8 shadow-sm">
+    <div data-tour="season-challenge" className="bg-surface-container-low rounded-2xl border border-outline-variant/50 p-6 md:p-8 shadow-sm">
       <div className="mb-6">
         <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
           <div className="flex items-center gap-2">

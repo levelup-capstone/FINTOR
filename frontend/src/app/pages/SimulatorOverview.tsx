@@ -103,7 +103,7 @@ export function SimulatorOverview() {
   };
 
   return (
-    <div className="flex flex-col gap-6">
+    <div data-tour="simulator-overview" className="flex flex-col gap-6">
       <button
         onClick={onCardClick}
         disabled={starting}

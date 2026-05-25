@@ -326,7 +326,7 @@ export function Dashboard() {
         </div>
 
       {/* ─── 상단: LEVEL & XP 바 (기존 컴포넌트 유지) ─────────────────────────── */}
-      <section className="w-full bg-slate-100/50 dark:bg-slate-900/50 p-6 md:p-8 rounded-xl border border-surface-container-low shadow-sm">
+      <section data-tour="level-section" className="w-full bg-slate-100/50 dark:bg-slate-900/50 p-6 md:p-8 rounded-xl border border-surface-container-low shadow-sm">
         <div className="space-y-3">
           <div className="flex justify-between px-1 items-baseline">
             <span className="text-xl md:text-3xl font-black text-[#1A237E] dark:text-indigo-300 font-headline uppercase tracking-tighter italic drop-shadow-sm">
@@ -419,7 +419,7 @@ export function Dashboard() {
       </section>
 
       {/* ─── 섹션 1: 오늘의 학습 미션 ─────────────────────────────────────────── */}
-      <section className="flex flex-col gap-4">
+      <section data-tour="today-mission" className="flex flex-col gap-4">
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* 카드 A — 시뮬레이터 (오늘의 시나리오) */}
@@ -581,7 +581,7 @@ export function Dashboard() {
       </section>
 
       {/* ─── 섹션 2: 실시간 인기 뉴스 ─────────────────────────────────────────── */}
-      <section className="bg-surface-container-lowest rounded-2xl border border-outline-variant/30 p-6 shadow-sm">
+      <section data-tour="popular-news" className="bg-surface-container-lowest rounded-2xl border border-outline-variant/30 p-6 shadow-sm">
         {/* Header */}
         <div className="flex items-center justify-between mb-4 pb-4 border-b border-outline-variant/20 flex-wrap gap-3">
           <div className="flex items-center gap-3">
