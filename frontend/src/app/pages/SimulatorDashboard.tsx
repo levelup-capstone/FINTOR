@@ -44,10 +44,22 @@ const ASSET_META: Record<string, { label: string; color: string; accent: string 
 };
 
 const REASON_TAGS = [
-  '#금리인하_지연', '#금리인상_우려', '#실적호조', '#실적부진',
-  '#안전자산선호', '#위험자산선호', '#기술주랠리', '#기술주조정',
-  '#달러강세', '#원화강세', '#인플레이션우려', '#변동성확대',
-  '#차트분석', '#감으로',
+  // 거시경제 · 통화정책
+  '#금리인하_지연', '#금리인상_우려', '#인플레이션우려', '#경기침체우려', '#경기회복기대',
+  // 시장 심리
+  '#안전자산선호', '#위험자산선호', '#변동성확대', '#포트폴리오_분산',
+  // 기업 실적
+  '#실적호조', '#실적부진',
+  // 섹터
+  '#기술주랠리', '#기술주조정', '#반도체_사이클', '#배당주_매력',
+  // 자산군
+  '#채권금리_매력', '#금_헷지', '#원자재_상승', '#에너지_급등',
+  // 환율
+  '#달러강세', '#원화강세',
+  // 매매 전략
+  '#저점매수', '#익절전략', '#손절매',
+  // 정보 소스
+  '#차트분석', '#뉴스_힌트반영', '#감으로',
 ];
 
 function buildChartPath(history: number[], totalDays: number): string {
@@ -266,7 +278,16 @@ function SimulatorDashboardContent() {
   const confirmedLeftoverWon = Math.round((confirmedLeftoverRatio * equity) / 100);
 
   const updateRatio = (key: string, value: number) => {
-    setAllocation((prev) => ({ ...prev, [key]: Math.max(0, Math.min(100, value)) }));
+    setAllocation((prev) => {
+      // 다른 자산들의 합산 — 이 값이 새 비율을 더해 100%를 넘지 않도록 제한
+      const othersSum = Object.entries(prev).reduce(
+        (s, [k, v]) => (k === key ? s : s + (v ?? 0)),
+        0,
+      );
+      const maxForThis = Math.max(0, 100 - othersSum);
+      const clamped = Math.max(0, Math.min(maxForThis, value));
+      return { ...prev, [key]: clamped };
+    });
   };
 
   const toggleTag = (tag: string) => {
@@ -641,6 +662,29 @@ function SimulatorDashboardContent() {
             </div>
 
             <section className="p-6">
+              {/* 합계 초과 경고 배너 */}
+              {!totalRatioOk && (
+                <div
+                  role="alert"
+                  className="mb-4 flex items-start gap-3 p-4 rounded-xl bg-red-50 border-2 border-red-300 shadow-sm"
+                >
+                  <span
+                    className="material-symbols-outlined text-red-600 text-[28px] flex-shrink-0"
+                    style={{ fontVariationSettings: '"FILL" 1' }}
+                  >
+                    error
+                  </span>
+                  <div className="flex-1">
+                    <p className="text-sm md:text-base font-extrabold text-red-700">
+                      자산 합계가 {totalRatio}%로 100%를 초과했습니다.
+                    </p>
+                    <p className="text-xs md:text-sm text-red-600 font-semibold mt-1">
+                      각 자산 비중을 줄여 합계를 100% 이하로 맞춘 뒤 매매 확정이 가능합니다.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div className="flex flex-wrap xl:flex-nowrap items-center justify-around gap-4 sm:gap-6 mb-8 bg-surface-container-low p-4 sm:p-6 rounded-xl border border-outline-variant/30 overflow-hidden">
                 <div className="flex flex-col items-center gap-2 flex-shrink-0">
                   <span className="font-bold text-on-surface-variant text-sm">현재 배분</span>
@@ -711,7 +755,7 @@ function SimulatorDashboardContent() {
                       disabled={todayConfirmed} />
                     <div className="flex items-center gap-1.5">
                       <div className="flex items-center bg-surface-container rounded-md px-2 py-1 flex-shrink-0">
-                        <input type="number" min={0} max={100} step={0.01}
+                        <input type="number" min={0} max={100} step={1}
                           value={ratioDisplay === 0 ? '' : ratioDisplay} placeholder="0"
                           onFocus={(e) => e.target.select()}
                           onChange={(e) => setRatio(e.target.value === '' ? 0 : Number(e.target.value))}
