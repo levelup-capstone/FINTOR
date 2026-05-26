@@ -249,6 +249,13 @@ def get_quiz_ranking_endpoint(
 
 
 # TODO: 배포 전 이 엔드포인트 제거
+@router.post("/api/quiz/dev/advance-season")
+def dev_advance_season(db: Session = Depends(get_db)):
+    result = crud.dev_force_end_season(db)
+    return {"success": True, "data": result}
+
+
+# TODO: 배포 전 이 엔드포인트 제거
 @router.post("/api/quiz/dev/reset-daily")
 def dev_reset_daily_quiz(
     db: Session = Depends(get_db),

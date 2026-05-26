@@ -260,6 +260,17 @@ class QuizAttempt(Base):
     question = relationship("QuizQuestion", back_populates="attempts")
 
 
+class QuizSeason(Base):
+    """무한 퀴즈 시즌 메타 (기간·EXP 지급 여부 관리)"""
+    __tablename__ = "quiz_seasons"
+
+    season          = Column(Integer, primary_key=True)
+    start_at        = Column(DateTime(timezone=True), nullable=False)
+    end_at          = Column(DateTime(timezone=True), nullable=False)
+    # 시즌 종료 후 랭킹 기반 EXP가 지급되면 True로 전환 (중복 지급 방지)
+    exp_distributed = Column(Boolean, default=False, nullable=False)
+
+
 class QuizSeasonScore(Base):
     """무한 퀴즈 시즌별 최고 기록"""
     __tablename__ = "quiz_season_scores"

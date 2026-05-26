@@ -107,6 +107,7 @@ export type RankingEntry = {
 };
 
 export type RankingData = {
+  season: number;
   my_rank: number | null;
   my_score: number;
   total_users: number;
@@ -156,4 +157,9 @@ export async function completeDailyQuiz(
 export async function devResetDailyQuiz(): Promise<boolean> {
   const result = await apiCall<{ deleted: boolean }>('/api/quiz/dev/reset-daily', { method: 'POST' });
   return result !== null;
+}
+
+// TODO: 배포 전 제거 — DEV 전용: 현재 시즌 즉시 종료 + EXP 지급 + 다음 시즌 시작
+export async function devAdvanceSeason(): Promise<{ ended_season: number; distributed: number; next_season: number } | null> {
+  return apiCall('/api/quiz/dev/advance-season', { method: 'POST' });
 }

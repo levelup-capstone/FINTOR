@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import {
   fetchTodayQuiz, submitAnswer, checkAnswer, fetchQuizStatus,
-  fetchInfinitePool, submitInfiniteScore, fetchRanking, completeDailyQuiz, devResetDailyQuiz,
+  fetchInfinitePool, submitInfiniteScore, fetchRanking, completeDailyQuiz, devResetDailyQuiz, devAdvanceSeason,
   type QuizQuestion, type SubmitResult, type RankingData,
 } from './quizApi';
 import { LevelUpModal, type LevelUpPayload } from '../components/LevelUpModal';
@@ -33,6 +33,7 @@ export function Quiz() {
   const [myRank, setMyRank] = useState<number | null>(null);
   const [totalUsers, setTotalUsers] = useState(0);
   const [myBest, setMyBest] = useState(0);
+  const [currentSeason, setCurrentSeason] = useState(1);
 
   const [infiniteOpen, setInfiniteOpen] = useState(false);
   const [rankingOpen, setRankingOpen] = useState(false);
@@ -56,7 +57,7 @@ export function Quiz() {
 
     fetchQuizStatus().then((s) => { if (s) setAccuracy(s.accuracy); });
     fetchRanking().then((d) => {
-      if (d) { setMyRank(d.my_rank); setTotalUsers(d.total_users); setMyBest(d.my_score); }
+      if (d) { setMyRank(d.my_rank); setTotalUsers(d.total_users); setMyBest(d.my_score); setCurrentSeason(d.season); }
     });
   }, []);
 
@@ -184,6 +185,7 @@ export function Quiz() {
       </section>
 
       <SeasonChallengeCard
+        season={currentSeason}
         myRank={myRank}
         totalUsers={totalUsers}
         myBest={myBest}
@@ -191,8 +193,8 @@ export function Quiz() {
         onRanking={() => setRankingOpen(true)}
       />
 
-      {/* [DEV ONLY] 일일 퀴즈 초기화 버튼 - 테스트 전용, 배포 전 제거 필요 */}
-      <div className="flex justify-center pt-2">
+      {/* [DEV ONLY] 개발 전용 버튼 - 테스트 전용, 배포 전 제거 필요 */}
+      <div className="flex justify-center gap-3 pt-2">
         <button
           onClick={async () => {
             if (!confirm('[DEV] 오늘의 일일 퀴즈 진행 기록을 초기화하시겠습니까?')) return;
@@ -209,6 +211,24 @@ export function Quiz() {
         >
           <span className="material-symbols-outlined text-[16px]">restart_alt</span>
           [DEV] 일일 퀴즈 초기화
+        </button>
+        {/* TODO: 배포 전 제거 — DEV 전용: 현재 시즌 강제 종료 + EXP 지급 + 다음 시즌 시작 */}
+        <button
+          onClick={async () => {
+            if (!confirm('[DEV] 현재 시즌을 즉시 종료하고 다음 시즌을 시작하시겠습니까?\n랭킹 기반 EXP가 모든 참여자에게 지급됩니다.')) return;
+            const result = await devAdvanceSeason();
+            if (result) {
+              alert(`[DEV] 시즌 ${result.ended_season} 종료 완료\n지급 인원: ${result.distributed}명\n다음 시즌: ${result.next_season}`);
+              fetchRanking().then((d) => {
+                if (d) { setMyRank(d.my_rank); setTotalUsers(d.total_users); setMyBest(d.my_score); setCurrentSeason(d.season); }
+              });
+            }
+          }}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border-2 border-dashed border-red-400 text-red-500 font-bold text-xs hover:bg-red-50 transition-colors"
+          title="[DEV] 다음 시즌으로"
+        >
+          <span className="material-symbols-outlined text-[16px]">skip_next</span>
+          [DEV] 다음 시즌으로
         </button>
       </div>
 
@@ -417,8 +437,9 @@ function DailyFinished({ result, countdown }: { result: DailyResult; countdown: 
 
 // ─── 시즌 챌린지 카드 ─────────────────────────────────────────────────────────
 function SeasonChallengeCard({
-  myRank, totalUsers, myBest, onStart, onRanking,
+  season, myRank, totalUsers, myBest, onStart, onRanking,
 }: {
+  season: number;
   myRank: number | null;
   totalUsers: number;
   myBest: number;
@@ -439,7 +460,7 @@ function SeasonChallengeCard({
             <h2 className="text-2xl md:text-3xl font-black tracking-tight text-on-surface">시즌 챌린지</h2>
           </div>
           <span className="bg-[#1A237E]/10 text-[#1A237E] text-xs font-bold uppercase tracking-widest px-3 py-1 rounded-full">
-            SEASON 1
+            SEASON {season}
           </span>
         </div>
         <p className="text-sm font-medium text-on-surface-variant">
@@ -705,7 +726,7 @@ function RankingModal({ onClose }: { onClose: () => void }) {
         {/* 헤더 */}
         <div className="px-6 py-5 border-b border-outline-variant/30 flex justify-between items-start flex-shrink-0">
           <div>
-            <h2 className="text-2xl md:text-3xl font-black tracking-tight text-on-surface">시즌 1 랭킹</h2>
+            <h2 className="text-2xl md:text-3xl font-black tracking-tight text-on-surface">시즌 {data?.season ?? '—'} 랭킹</h2>
           </div>
           <button
             onClick={onClose}

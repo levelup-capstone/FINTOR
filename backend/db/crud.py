@@ -550,7 +550,138 @@ def submit_infinite_score(db: Session, user_id: int, score: int, season: int = 1
     return {"best_score": existing.best_score}
 
 
-def get_quiz_ranking(db: Session, user_id: int, season: int = 1) -> dict:
+
+# ── 퀴즈 시즌 관리 ───────────────────────────────────────────────────────────
+SEASON_DURATION_DAYS = 14
+
+# 랭킹 백분위 구간 → 지급 EXP (상위부터 순서대로, 마지막 구간은 나머지 전체)
+# 수치 근거: 일일 퀴즈 최대 23 EXP/일 기준, 2주 총합 ~322 EXP 대비 조정
+SEASON_EXP_TIERS = [
+    (0.10, 200),  # 상위 ~10%:    9일치 만점 퀴즈에 해당
+    (0.30, 120),  # 10% 초과~30%: 5일치
+    (0.50,  70),  # 30% 초과~50%: 3일치
+    (0.70,  40),  # 50% 초과~70%: 2일치
+    (1.00,  20),  # 70% 초과:     참여 보상 (~1일치)
+]
+
+
+def get_current_season(db: Session) -> models.QuizSeason | None:
+    return (
+        db.query(models.QuizSeason)
+        .order_by(models.QuizSeason.season.desc())
+        .first()
+    )
+
+
+_KST = timezone(timedelta(hours=9))
+
+
+def _kst_midnight(days_offset: int = 0) -> datetime:
+    """오늘(또는 days_offset일 후) KST 자정을 반환."""
+    today_kst = datetime.now(_KST).replace(hour=0, minute=0, second=0, microsecond=0)
+    return today_kst + timedelta(days=days_offset)
+
+
+def get_or_create_current_season(db: Session) -> models.QuizSeason:
+    season = get_current_season(db)
+    if season is None:
+        # 오늘 KST 자정 시작, 14일 후 KST 자정 종료
+        start_at = _kst_midnight()
+        end_at   = _kst_midnight(SEASON_DURATION_DAYS)
+        season = models.QuizSeason(
+            season=1,
+            start_at=start_at,
+            end_at=end_at,
+        )
+        db.add(season)
+        db.commit()
+        db.refresh(season)
+        print(f"🏆 퀴즈 시즌 1 생성: {start_at.strftime('%Y-%m-%d')} ~ {end_at.strftime('%Y-%m-%d')} (KST)")
+    return season
+
+
+# TODO: 배포 전 제거 — DEV 전용: 현재 시즌을 즉시 종료하여 distribute_season_exp 트리거
+def dev_force_end_season(db: Session) -> dict:
+    """현재 진행 중인 시즌의 end_at을 과거로 당겨 즉시 종료 처리."""
+    season = get_current_season(db)
+    if season is None:
+        return {"error": "진행 중인 시즌이 없습니다."}
+    if season.exp_distributed:
+        return {"error": f"시즌 {season.season}은 이미 종료 처리되었습니다."}
+
+    # end_at을 1초 전으로 설정 → distribute_season_exp가 종료 시즌으로 인식
+    season.end_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    db.commit()
+
+    distributed = distribute_season_exp(db)
+    new_season = get_current_season(db)
+    return {
+        "ended_season":  season.season,
+        "distributed":   distributed,
+        "next_season":   new_season.season if new_season else None,
+        "next_end_at":   new_season.end_at.isoformat() if new_season else None,
+    }
+
+
+def distribute_season_exp(db: Session) -> int:
+    """종료된 시즌에 랭킹 기반 EXP를 지급하고 다음 시즌을 자동 생성.
+
+    - 종료(end_at <= now)됐고 아직 EXP 미지급인 시즌이 없으면 아무것도 하지 않음
+    - 반환: EXP를 지급받은 유저 수
+    """
+    now = datetime.now(timezone.utc)
+    season = (
+        db.query(models.QuizSeason)
+        .filter(
+            models.QuizSeason.end_at <= now,
+            models.QuizSeason.exp_distributed == False,  # noqa: E712
+        )
+        .first()
+    )
+    if not season:
+        return 0
+
+    scores = (
+        db.query(models.QuizSeasonScore)
+        .filter(models.QuizSeasonScore.season == season.season)
+        .order_by(models.QuizSeasonScore.best_score.desc())
+        .all()
+    )
+    total = len(scores)
+    distributed = 0
+
+    if total > 0:
+        for rank_idx, entry in enumerate(scores):
+            pct = (rank_idx + 1) / total
+            for threshold, exp_amount in SEASON_EXP_TIERS:
+                if pct <= threshold:
+                    grant_exp(db, entry.user_id, exp_amount)
+                    distributed += 1
+                    break
+
+    season.exp_distributed = True
+    db.commit()
+
+    # 다음 시즌 자동 시작 (현재 시즌 종료 시각을 시작점으로 사용)
+    next_season = models.QuizSeason(
+        season=season.season + 1,
+        start_at=season.end_at,
+        end_at=season.end_at + timedelta(days=SEASON_DURATION_DAYS),
+    )
+    db.add(next_season)
+    db.commit()
+    print(
+        f"🏆 시즌 {season.season} EXP 지급 완료 ({distributed}명) "
+        f"→ 시즌 {next_season.season} 시작 (~{next_season.end_at.date()})"
+    )
+    return distributed
+
+
+def get_quiz_ranking(db: Session, user_id: int) -> dict:
+    # 하드코딩 대신 DB에서 현재 진행 중인 시즌 번호를 조회
+    current = get_current_season(db)
+    season = current.season if current else 1
+
     top = (
         db.query(models.QuizSeasonScore, models.User.nickname)
         .join(models.User, models.QuizSeasonScore.user_id == models.User.id)
@@ -595,10 +726,11 @@ def get_quiz_ranking(db: Session, user_id: int, season: int = 1) -> dict:
         for i, (s, nickname) in enumerate(top)
     ]
     return {
-        "my_rank": my_rank,
-        "my_score": my_score,
+        "season":      season,
+        "my_rank":     my_rank,
+        "my_score":    my_score,
         "total_users": total_users,
-        "entries": entries,
+        "entries":     entries,
     }
 
 

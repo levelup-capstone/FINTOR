@@ -10,6 +10,7 @@ from seeds.quiz import seed as run_quiz_seed
 
 from utils.market import collect_and_save_market_data
 from utils.news import run_news_pipeline
+from db.crud import get_or_create_current_season, distribute_season_exp
 
 from routers import auth, market, survey, game, quiz, user
 
@@ -65,11 +66,26 @@ def startup_event():
     threading.Thread(target=collect_and_save_market_data, daemon=True).start()
     threading.Thread(target=run_news_pipeline, daemon=True).start()
 
-    # 주기적 수집: 시장 지수 5분 / 뉴스 30분
+    # 퀴즈 시즌이 없으면 시즌 1을 즉시 생성
+    season_db = next(get_db())
+    try:
+        get_or_create_current_season(season_db)
+    finally:
+        season_db.close()
+
+    def _run_distribute_season_exp():
+        dist_db = next(get_db())
+        try:
+            distribute_season_exp(dist_db)
+        finally:
+            dist_db.close()
+
+    # 주기적 수집: 시장 지수 5분 / 뉴스 30분 / 시즌 종료 EXP 지급 1시간
     scheduler.add_job(collect_and_save_market_data, "interval", minutes=5)
     scheduler.add_job(run_news_pipeline, "interval", minutes=30)
+    scheduler.add_job(_run_distribute_season_exp, "interval", hours=1)
     scheduler.start()
-    print("⏰ 스케줄러 시작 (지수 5분 / 뉴스 30분)")
+    print("⏰ 스케줄러 시작 (지수 5분 / 뉴스 30분 / 시즌 EXP 1시간)")
 
 
 @app.on_event("shutdown")
