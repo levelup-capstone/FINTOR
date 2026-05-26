@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { fetchParticipation, confirmAllocation, devAdvanceDay, devResetParticipation, INITIAL_CASH, type ParticipationData, type DayNews, type AllocateResult } from './simulatorApi';
+import { fetchParticipation, confirmAllocation, devResetParticipation, INITIAL_CASH, type ParticipationData, type DayNews, type AllocateResult } from './simulatorApi';
 import { SimulatorTourProvider } from '../components/SimulatorTourContext';
 import { SimulatorTourOverlay } from '../components/SimulatorTourOverlay';
 
@@ -858,18 +858,6 @@ function SimulatorDashboardContent() {
               >
                 {isLastDay ? '결과 보기' : (todayConfirmed ? '오늘 매매 확정 완료' : '오늘의 매매 확정하기')}
               </button>
-              {/* [DEV ONLY] 다음 일차 강제 이동 버튼 - 테스트 전용, 배포 전 제거 필요 */}
-              <button
-                onClick={async () => {
-                  const pid = Number(localStorage.getItem('participationId'));
-                  const result = await devAdvanceDay(pid); // DEV ONLY
-                  if (result) window.location.reload();
-                }}
-                className="px-4 py-4 rounded-xl border-2 border-dashed border-orange-400 text-orange-500 font-bold text-sm hover:bg-orange-50 transition-colors"
-                title="[DEV] 다음 일차로 이동"
-              >
-                <span className="material-symbols-outlined text-[20px] align-middle">skip_next</span>
-              </button>
               {/* [DEV ONLY] 시나리오 진행 전체 초기화 버튼 - 테스트 전용, 배포 전 제거 필요 */}
               <button
                 onClick={async () => {
@@ -888,7 +876,7 @@ function SimulatorDashboardContent() {
             </div>
             <span className="text-on-surface-variant text-xs mt-3 flex items-center gap-1">
               <span className="material-symbols-outlined text-[14px]">info</span>
-              {isLastDay ? '마지막 날 · 클릭 시 시즌 종료 후 결과 페이지로 이동' : '오늘 1회 가능 · 자정 자동 정산'}
+              {isLastDay ? '마지막 날 · 클릭 시 시즌 종료 후 결과 페이지로 이동' : '확정하면 다음 일차로 넘어갑니다'}
             </span>
           </div>
           </div>

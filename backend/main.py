@@ -1,5 +1,4 @@
 import threading
-from datetime import timedelta, timezone
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -11,7 +10,6 @@ from seeds.quiz import seed as run_quiz_seed
 
 from utils.market import collect_and_save_market_data
 from utils.news import run_news_pipeline
-from routers.game import _game_daily_settlement
 
 from routers import auth, market, survey, game, quiz, user
 
@@ -22,8 +20,6 @@ from routers import auth, market, survey, game, quiz, user
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Fintor Auth Server")
-
-KST = timezone(timedelta(hours=9))
 
 
 
@@ -69,12 +65,11 @@ def startup_event():
     threading.Thread(target=collect_and_save_market_data, daemon=True).start()
     threading.Thread(target=run_news_pipeline, daemon=True).start()
 
-    # 주기적 수집: 시장 지수 5분 / 뉴스 30분 / 게임 일일 정산 KST 자정
+    # 주기적 수집: 시장 지수 5분 / 뉴스 30분
     scheduler.add_job(collect_and_save_market_data, "interval", minutes=5)
     scheduler.add_job(run_news_pipeline, "interval", minutes=30)
-    scheduler.add_job(_game_daily_settlement, "cron", hour=0, minute=0, timezone=KST)
     scheduler.start()
-    print("⏰ 스케줄러 시작 (지수 5분 / 뉴스 30분 / 게임 정산 매일 자정 KST)")
+    print("⏰ 스케줄러 시작 (지수 5분 / 뉴스 30분)")
 
 
 @app.on_event("shutdown")

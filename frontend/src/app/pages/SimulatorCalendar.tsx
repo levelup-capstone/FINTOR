@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { fetchParticipation, devAdvanceDay, INITIAL_CASH, type ParticipationData } from './simulatorApi';
+import { fetchParticipation, advanceDay, INITIAL_CASH, type ParticipationData } from './simulatorApi';
 
 const TOTAL_DAYS = 7;
 
@@ -513,7 +513,7 @@ export function SimulatorCalendar() {
         </div>
       </section>
 
-      {/* 시즌 진행 중일 때만: 다음 날로 넘어가기 (시즌 압축 진행용) */}
+      {/* 다음 날로 넘어가기 */}
       {!pData.is_finalized && today_index < TOTAL_DAYS && (() => {
         const todayConfirmed = allocations.some((a) => a.day_index === today_index);
         return (
@@ -522,7 +522,7 @@ export function SimulatorCalendar() {
               disabled={!todayConfirmed}
               onClick={async () => {
                 const pid = Number(localStorage.getItem('participationId'));
-                const result = await devAdvanceDay(pid);
+                const result = await advanceDay(pid);
                 if (result) {
                   navigate('/dashboard/simulator/season');
                 }
@@ -540,6 +540,7 @@ export function SimulatorCalendar() {
           </section>
         );
       })()}
+
     </div>
   );
 }

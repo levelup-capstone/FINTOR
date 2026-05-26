@@ -224,16 +224,24 @@ def get_active_participation(db: Session, user_id: int):
         models.GameParticipation.is_finalized == False,
     ).order_by(models.GameParticipation.created_at.desc()).first()
 
-def create_participation(db: Session, user_id: int, scenario_id: int, start_date):
+def create_participation(db: Session, user_id: int, scenario_id: int):
     p = models.GameParticipation(
         user_id     = user_id,
         scenario_id = scenario_id,
-        start_date  = start_date,
+        day_index   = 1,
     )
     db.add(p)
     db.commit()
     db.refresh(p)
     return p
+
+def advance_day(db: Session, participation_id: int) -> int:
+    """day_index를 1 증가시키고 새 값을 반환한다. 7 초과 시 7에서 고정."""
+    p = get_participation(db, participation_id)
+    if p:
+        p.day_index = min(p.day_index + 1, 7)
+        db.commit()
+    return p.day_index if p else 1
 
 def get_allocations_by_participation(db: Session, participation_id: int):
     return db.query(models.GameAllocation).filter(

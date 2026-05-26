@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, Float, DateTime, Date, ForeignKey, Boolean, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Text, Float, DateTime, Date, ForeignKey, Boolean, UniqueConstraint, CheckConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
@@ -162,7 +162,7 @@ class GameParticipation(Base):
     id           = Column(Integer, primary_key=True, index=True)
     user_id      = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     scenario_id  = Column(Integer, ForeignKey("game_scenarios.id", ondelete="CASCADE"), nullable=False)
-    start_date   = Column(DateTime(timezone=True), nullable=False)   # 유저가 버튼 누른 시각
+    day_index    = Column(Integer, default=1, nullable=False)        # 현재 게임 일차 (1~7)
     is_finalized = Column(Boolean, default=False, nullable=False)
     created_at   = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 

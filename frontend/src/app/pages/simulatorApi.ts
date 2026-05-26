@@ -122,14 +122,13 @@ export async function confirmAllocation(
   });
 }
 
+export async function advanceDay(participationId: number): Promise<{ day_index: number } | null> {
+  return apiCall<{ day_index: number }>(`/api/game/participation/${participationId}/advance-day`, { method: 'POST' });
+}
+
 // [DEV ONLY] 시나리오 진행 전체 초기화 - 테스트 전용, 배포 전 제거 필요
 export async function devResetParticipation(): Promise<{ deleted_count: number } | null> {
   return apiCall(`/api/game/dev/reset-all`, { method: 'POST' });
-}
-
-// [DEV ONLY] 다음 일차 강제 이동 - 테스트 전용, 배포 전 제거 필요
-export async function devAdvanceDay(participationId: number): Promise<{ today_index: number } | null> {
-  return apiCall(`/api/game/participation/${participationId}/dev/advance-day`, { method: 'POST' });
 }
 
 export async function fetchScenarios(): Promise<ScenarioInfo[]> {
