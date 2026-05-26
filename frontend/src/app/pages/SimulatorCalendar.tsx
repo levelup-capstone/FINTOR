@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { fetchParticipation, devAdvanceDay, type ParticipationData } from './simulatorApi';
+import { fetchParticipation, devAdvanceDay, INITIAL_CASH, type ParticipationData } from './simulatorApi';
 
 const TOTAL_DAYS = 7;
 
@@ -78,7 +78,7 @@ export function SimulatorCalendar() {
     );
   }
 
-  const { scenario, today_index, current_value, total_return, initial_cash, allocations, prices } = pData;
+  const { scenario, today_index, current_value, total_return, allocations, prices } = pData;
 
   // 누락된 일자의 평가액을 ancestor 배분 + 가격 변동으로 계산해서 채움
   // (백엔드 _calc_portfolio_value 와 동일한 누적 모델)
@@ -130,18 +130,18 @@ export function SimulatorCalendar() {
     }
     const effectiveValue = computeDayValue(day);
     const prevValue = computeDayValue(day - 1);
-    // 일일 수익률: 전날 평가액 대비. Day 1은 initial_cash 대비.
+    // 일일 수익률: 전날 평가액 대비. Day 1은 INITIAL_CASH 대비.
     let dailyReturn: number | null = null;
     if (effectiveValue != null) {
-      const base = day === 1 ? initial_cash : prevValue;
+      const base = day === 1 ? INITIAL_CASH : prevValue;
       if (base != null && base !== 0) {
         dailyReturn = ((effectiveValue - base) / base) * 100;
       }
     }
     // 누적 수익률
     const returnRate =
-      effectiveValue != null && initial_cash !== 0
-        ? ((effectiveValue - initial_cash) / initial_cash) * 100
+      effectiveValue != null
+        ? ((effectiveValue - INITIAL_CASH) / INITIAL_CASH) * 100
         : null;
     return {
       day,

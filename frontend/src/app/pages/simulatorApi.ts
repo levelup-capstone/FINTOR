@@ -1,5 +1,7 @@
 const API_BASE = '';
 
+export const INITIAL_CASH = 10_000_000;
+
 function authHeaders() {
   const token = localStorage.getItem('accessToken');
   return {
@@ -72,7 +74,6 @@ export type ParticipationData = {
   scenario: ScenarioInfo;
   today_index: number;
   is_finalized: boolean;
-  initial_cash: number;
   current_value: number;
   total_return: number;
   prices: Record<string, number[]>;       // { asset: [D1..D7] }

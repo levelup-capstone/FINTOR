@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { fetchParticipation, confirmAllocation, devAdvanceDay, devResetParticipation, type ParticipationData, type DayNews, type AllocateResult } from './simulatorApi';
+import { fetchParticipation, confirmAllocation, devAdvanceDay, devResetParticipation, INITIAL_CASH, type ParticipationData, type DayNews, type AllocateResult } from './simulatorApi';
 import { SimulatorTourProvider } from '../components/SimulatorTourContext';
 import { SimulatorTourOverlay } from '../components/SimulatorTourOverlay';
 
@@ -207,7 +207,7 @@ function SimulatorDashboardContent() {
     );
   }
 
-  const { scenario, today_index, initial_cash, prices, macros, news_by_day, allocations } = pData;
+  const { scenario, today_index, prices, macros, news_by_day, allocations } = pData;
   const todayIdx0 = today_index - 1;
 
   type MacroItem = { label: string; value: string; delta: string; deltaColor: string; path: string; stroke: string; history: number[]; formatValue: (v: number) => string };
@@ -335,12 +335,12 @@ function SimulatorDashboardContent() {
   const knownEquity = equityHistory.filter((v): v is number => v !== null);
   // 오늘 라이브 평가액(equity)이 history에 없으면 포함시킴 (오늘 미확정 케이스)
   const todayInHistory = equityHistory[todayIdx0] != null;
-  const allValues = [initial_cash, ...knownEquity, ...(todayInHistory ? [] : [equity])];
+  const allValues = [INITIAL_CASH, ...knownEquity, ...(todayInHistory ? [] : [equity])];
   const rawMin = Math.min(...allValues);
   const rawMax = Math.max(...allValues);
-  // 데이터가 평평해도 최소 범위 확보 (initial_cash의 4%) + 위아래 20% padding
+  // 데이터가 평평해도 최소 범위 확보 (INITIAL_CASH의 4%) + 위아래 20% padding
   const center = (rawMin + rawMax) / 2;
-  const halfEffective = Math.max((rawMax - rawMin) / 2, initial_cash * 0.02);
+  const halfEffective = Math.max((rawMax - rawMin) / 2, INITIAL_CASH * 0.02);
   const yPad = halfEffective * 0.4;
   const yMin = center - halfEffective - yPad;
   const yMax = center + halfEffective + yPad;
@@ -364,7 +364,7 @@ function SimulatorDashboardContent() {
     .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`)
     .join(' ');
   const todayEquityY = toY(equity);
-  const initialCashY = toY(initial_cash);
+  const initialCashY = toY(INITIAL_CASH);
 
   const isUp = totalReturn >= 0;
   const progressPct = Math.round((today_index / TOTAL_DAYS) * 100);
@@ -549,7 +549,7 @@ function SimulatorDashboardContent() {
             <div className="h-48 w-full relative mt-4">
               <div className="absolute inset-0 border-b border-l border-outline-variant/30" />
               <div className="absolute w-full border-t border-dashed border-outline-variant" style={{ top: `${initialCashY}%` }}>
-                <span className="absolute -top-4 right-0 text-[10px] font-semibold text-on-surface-variant">₩{(initial_cash / 1_000_000).toFixed(0)}M (시작)</span>
+                <span className="absolute -top-4 right-0 text-[10px] font-semibold text-on-surface-variant">₩{(INITIAL_CASH / 1_000_000).toFixed(0)}M (시작)</span>
               </div>
               <svg className="w-full h-full absolute inset-0" preserveAspectRatio="none" viewBox="0 0 100 100">
                 {equityPath && <path d={equityPath} fill="none" stroke="#1A237E" strokeWidth="2" vectorEffect="non-scaling-stroke" />}

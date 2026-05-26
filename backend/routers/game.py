@@ -7,6 +7,7 @@ from openai import OpenAI
 from sqlalchemy.orm import Session
 
 from db import models, schemas, crud
+from db.models import INITIAL_CASH
 from db.session import get_db, SessionLocal
 from dependencies import get_current_user
 from utils.scoring import calculate_score
@@ -30,7 +31,6 @@ def _calc_today_index(start_date, total_days: int = 7) -> int:
 
 
 def _calc_portfolio_value(
-    initial_cash: float,
     prev_value: float,
     prev_allocations: dict | None,
     prices_map: dict,
@@ -38,10 +38,10 @@ def _calc_portfolio_value(
 ) -> float:
     """
     오늘의 평가액 = 어제 평가액 × Σ(어제 비율 × 오늘가격/어제가격).
-    Day1은 아직 운용 전이므로 initial_cash 그대로 반환.
+    Day1은 아직 운용 전이므로 INITIAL_CASH 그대로 반환.
     """
     if day_index <= 1 or not prev_allocations:
-        return round(initial_cash, 2)
+        return round(INITIAL_CASH, 2)
 
     factor = 0.0
     leftover_ratio = 100.0
@@ -105,9 +105,9 @@ def _game_daily_settlement():
             running_value = ancestor_alloc.portfolio_value
             for d in range(ancestor_alloc.day_index + 1, today_idx + 1):
                 running_value = _calc_portfolio_value(
-                    p.initial_cash, running_value, ancestor_alloc.allocations, prices_map, d
+                    running_value, ancestor_alloc.allocations, prices_map, d
                 )
-                rr = round((running_value - p.initial_cash) / p.initial_cash * 100, 2)
+                rr = round((running_value - INITIAL_CASH) / INITIAL_CASH * 100, 2)
                 crud.create_allocation(db, p.id, d, ancestor_alloc.allocations, running_value, rr)
             settled += 1
             print(f"   ✅ participation {p.id} (user {p.user_id}) Day {ancestor_alloc.day_index + 1}~{today_idx} 자동 정산 — ₩{running_value:,.0f}")
@@ -267,11 +267,11 @@ def get_participation(
         current_value = latest_alloc.portfolio_value
         for d in range(latest_alloc.day_index + 1, today_idx + 1):
             current_value = _calc_portfolio_value(
-                p.initial_cash, current_value, latest_alloc.allocations, prices_map, d
+                current_value, latest_alloc.allocations, prices_map, d
             )
     else:
-        current_value = p.initial_cash
-    total_return = round((current_value - p.initial_cash) / p.initial_cash * 100, 2)
+        current_value = INITIAL_CASH
+    total_return = round((current_value - INITIAL_CASH) / INITIAL_CASH * 100, 2)
 
     return {
         "success": True,
@@ -288,7 +288,6 @@ def get_participation(
             },
             "today_index":   today_idx,
             "is_finalized":  p.is_finalized,
-            "initial_cash":  p.initial_cash,
             "current_value": current_value,
             "total_return":  total_return,
             "prices":        prices_map,
@@ -339,19 +338,19 @@ def allocate_game(
         running_value = ancestor_alloc.portfolio_value
         for d in range(ancestor_alloc.day_index + 1, today_idx):
             running_value = _calc_portfolio_value(
-                p.initial_cash, running_value, ancestor_alloc.allocations, prices_map, d
+                running_value, ancestor_alloc.allocations, prices_map, d
             )
-            gap_return_rate = round((running_value - p.initial_cash) / p.initial_cash * 100, 2)
+            gap_return_rate = round((running_value - INITIAL_CASH) / INITIAL_CASH * 100, 2)
             crud.create_allocation(
                 db, participation_id, d, ancestor_alloc.allocations, running_value, gap_return_rate
             )
         portfolio_value = _calc_portfolio_value(
-            p.initial_cash, running_value, ancestor_alloc.allocations, prices_map, today_idx
+            running_value, ancestor_alloc.allocations, prices_map, today_idx
         )
     else:
         # Day1 최초 배분: 아직 가격 변동 없으므로 원금 그대로
-        portfolio_value = p.initial_cash
-    return_rate = round((portfolio_value - p.initial_cash) / p.initial_cash * 100, 2)
+        portfolio_value = INITIAL_CASH
+    return_rate = round((portfolio_value - INITIAL_CASH) / INITIAL_CASH * 100, 2)
 
     alloc = crud.create_allocation(
         db, participation_id, today_idx, req.allocations, portfolio_value, return_rate,

@@ -224,12 +224,11 @@ def get_active_participation(db: Session, user_id: int):
         models.GameParticipation.is_finalized == False,
     ).order_by(models.GameParticipation.created_at.desc()).first()
 
-def create_participation(db: Session, user_id: int, scenario_id: int, start_date, initial_cash: float = 10_000_000):
+def create_participation(db: Session, user_id: int, scenario_id: int, start_date):
     p = models.GameParticipation(
-        user_id      = user_id,
-        scenario_id  = scenario_id,
-        start_date   = start_date,
-        initial_cash = initial_cash,
+        user_id     = user_id,
+        scenario_id = scenario_id,
+        start_date  = start_date,
     )
     db.add(p)
     db.commit()

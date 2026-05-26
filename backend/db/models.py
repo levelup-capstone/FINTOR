@@ -4,6 +4,8 @@ from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 from db.session import Base
 
+INITIAL_CASH: float = 10_000_000
+
 # ── 사용자 ───────────────────────────────────────────────────────────────────
 class User(Base):
     __tablename__ = "users"
@@ -161,7 +163,6 @@ class GameParticipation(Base):
     user_id      = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     scenario_id  = Column(Integer, ForeignKey("game_scenarios.id", ondelete="CASCADE"), nullable=False)
     start_date   = Column(DateTime(timezone=True), nullable=False)   # 유저가 버튼 누른 시각
-    initial_cash = Column(Float, default=10_000_000, nullable=False)
     is_finalized = Column(Boolean, default=False, nullable=False)
     created_at   = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 

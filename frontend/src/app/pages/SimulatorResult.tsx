@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
-import { fetchParticipation, fetchGameScore, fetchGameReview, devResetParticipation, type ParticipationData, type GameScore, type GameReview } from './simulatorApi';
+import { fetchParticipation, fetchGameScore, fetchGameReview, devResetParticipation, INITIAL_CASH, type ParticipationData, type GameScore, type GameReview } from './simulatorApi';
 import { LevelUpModal, type LevelUpPayload } from '../components/LevelUpModal';
 
 export function SimulatorResult() {
@@ -72,11 +72,11 @@ export function SimulatorResult() {
     );
   }
 
-  const { scenario, total_return, current_value, initial_cash, allocations } = pData;
+  const { scenario, total_return, current_value, allocations } = pData;
   const TOTAL_DAYS = 7;
 
   // 최종 수익금
-  const finalProfit = Math.floor(current_value - initial_cash);
+  const finalProfit = Math.floor(current_value - INITIAL_CASH);
   const isProfitUp = finalProfit >= 0;
 
   // 자산 추이 (7일치 평가액)
@@ -84,11 +84,11 @@ export function SimulatorResult() {
     const a = allocations.find((x) => x.day_index === i + 1);
     return a?.portfolio_value ?? null;
   });
-  const knownValues = [initial_cash, ...equityHistory.filter((v): v is number => v !== null)];
+  const knownValues = [INITIAL_CASH, ...equityHistory.filter((v): v is number => v !== null)];
   const rawMin = Math.min(...knownValues);
   const rawMax = Math.max(...knownValues);
   const center = (rawMin + rawMax) / 2;
-  const halfEffective = Math.max((rawMax - rawMin) / 2, initial_cash * 0.02);
+  const halfEffective = Math.max((rawMax - rawMin) / 2, INITIAL_CASH * 0.02);
   const yPad = halfEffective * 0.4;
   const yMin = center - halfEffective - yPad;
   const yMax = center + halfEffective + yPad;
@@ -101,7 +101,7 @@ export function SimulatorResult() {
   const equityArea = equityPath
     ? `${equityPath} L ${equityPoints[equityPoints.length - 1].x.toFixed(2)} 100 L ${equityPoints[0].x.toFixed(2)} 100 Z`
     : '';
-  const initialCashY = toY(initial_cash);
+  const initialCashY = toY(INITIAL_CASH);
 
   const returnScore    = scoreData?.return_score    ?? 0;
   const scenarioScore  = scoreData?.scenario_score  ?? 0;
@@ -202,7 +202,7 @@ export function SimulatorResult() {
             </span>
           </div>
           <div className="text-xs font-semibold text-on-surface-variant flex items-center gap-2 flex-wrap">
-            <span>시작 ₩{initial_cash.toLocaleString()}</span>
+            <span>시작 ₩{INITIAL_CASH.toLocaleString()}</span>
             <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
             <span>종료 ₩{Math.floor(current_value).toLocaleString()}</span>
           </div>
@@ -222,7 +222,7 @@ export function SimulatorResult() {
             {/* 시작선 (initial_cash) */}
             <div className="absolute w-full border-t border-dashed border-outline-variant" style={{ top: `${initialCashY}%` }}>
               <span className="absolute -top-4 right-0 text-[10px] font-semibold text-on-surface-variant">
-                ₩{(initial_cash / 1_000_000).toFixed(0)}M (시작)
+                ₩{(INITIAL_CASH / 1_000_000).toFixed(0)}M (시작)
               </span>
             </div>
             <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 100">
