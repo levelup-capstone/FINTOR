@@ -44,11 +44,11 @@ export const TOUR_STEPS: TourStep[] = [
     nextLabel: '다음',
   },
   {
-    id: 'header-ticker',
+    id: 'market-indices',
     path: '/dashboard',
-    target: 'header-ticker',
+    target: 'market-indices',
     title: '📈 실시간 시장 지수',
-    body: '헤더 하단 띠에서 주요 7개 지수(S&P 500, KOSPI, 비트코인, USD/KRW 등)가 실시간으로 흐릅니다.',
+    body: '주요 지수(KOSPI, S&P 500, 비트코인, 환율 등)와 카테고리별 상세 지수를 확인할 수 있어요. 헤더 하단 띠에서도 실시간으로 흐릅니다.',
     nextLabel: '퀴즈 보기',
   },
   {

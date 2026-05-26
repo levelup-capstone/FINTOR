@@ -52,7 +52,7 @@ function MarketTicker() {
     .filter((x) => x.item != null);
 
   return (
-    <div data-tour="header-ticker" className="border-t border-outline-variant/20 bg-slate-100/60 dark:bg-slate-900/60">
+    <div className="border-t border-outline-variant/20 bg-slate-100/60 dark:bg-slate-900/60">
       <div className="max-w-7xl mx-auto px-6 overflow-hidden">
         <div className="ticker-track flex whitespace-nowrap py-2">
           {[...items, ...items].map((x, i) => {

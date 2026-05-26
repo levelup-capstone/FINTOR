@@ -2,11 +2,13 @@ import { ChevronDown, Menu, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import kakaoLoginButton from "../../assets/kakao_login_button.png";
+import { PolicyModal } from "../components/PolicyModal";
 
 export function Login() {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [oauthError, setOauthError] = useState("");
+  const [policyOpen, setPolicyOpen] = useState(false);
 
   // 이미 로그인된 상태면 대시보드로 바로 이동
   useEffect(() => {
@@ -134,13 +136,13 @@ export function Login() {
               Fintor
             </h1>
             <p className="text-white/90 text-base sm:text-lg md:text-2xl mb-8 sm:mb-10 md:mb-14 leading-relaxed font-medium px-2">
-              LLM 기반 개인화 금융 학습 및<br className="sm:hidden" />{" "}
-              포트폴리오 관리 플랫폼
+              매일 풀고 레벨업하는<br className="sm:hidden" />{" "}
+              투자 학습 플랫폼
             </p>
             <p className="text-white/80 text-sm sm:text-base md:text-lg mb-8 sm:mb-10 leading-relaxed max-w-2xl mx-auto px-2">
-              금융이 어려운 사람도 쉽게 시작할 수 있습니다.
+              퀴즈, 시뮬레이션, 실시간 뉴스로 즐겁게 투자를 배우세요.
               <br />
-              최적화된 학습과 포트폴리오 분석으로 스마트한 투자를 만듭니다.
+              가상 자금으로 안전하게 자산 배분을 경험합니다.
             </p>
 
             {/* 카카오 로그인 버튼 */}
@@ -175,16 +177,16 @@ export function Login() {
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-12 sm:mb-16">
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-3 sm:mb-4 px-2">
-              FINTO가 제공하는 핵심 서비스
+              Fintor가 제공하는 핵심 기능
             </h2>
-            <p className="text-gray-600 text-base sm:text-lg px-2">AI 기술로 당신만의 금융 여정을 시작하세요</p>
+            <p className="text-gray-600 text-base sm:text-lg px-2">게이미피케이션으로 즐겁게 배우는 투자</p>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
             {[
-              { emoji: "🤔", color: "orange", title: "금융 이해도 분석", desc: "당신의 금융 지식 수준을 정확하게 파악합니다", sub: "초보자부터 전문가까지 맞춤 분석" },
-              { emoji: "📊", color: "blue", title: "맞춤형 학습", desc: "AI가 추천하는 개인화된 금융 학습 콘텐츠", sub: "당신의 수준에 맞는 단계별 학습" },
-              { emoji: "📈", color: "purple", title: "포트폴리오 추천", desc: "투자 성향 분석을 통한 최적의 자산 배분", sub: "리스크를 고려한 맞춤 포트폴리오" },
-              { emoji: "💰", color: "green", title: "실시간 자산 관리", desc: "한눈에 보는 자산 현황과 투자 분석", sub: "직관적인 대시보드로 쉽게 관리" },
+              { emoji: "📅", color: "orange", title: "일일 퀴즈 챌린지", desc: "매일 6문제를 풀며 streak을 쌓아요", sub: "정답률에 따라 EXP와 레벨업 보상" },
+              { emoji: "🎮", color: "blue", title: "가상 시즌 시뮬레이션", desc: "고금리·침체·블랙스완 등 7일 시나리오", sub: "실제 자금 없이 자산 배분 연습" },
+              { emoji: "📰", color: "purple", title: "AI 시장 뉴스", desc: "호재·악재가 자동 분석된 실시간 뉴스", sub: "한눈에 확인하는 시장 흐름" },
+              { emoji: "🎯", color: "green", title: "투자 성향 진단", desc: "9개 문항으로 5단계 성향 분석", sub: "안정형부터 공격투자형까지" },
             ].map((card) => (
               <div key={card.title} className="bg-white p-6 sm:p-8 rounded-2xl border border-gray-100 hover:shadow-xl transition-all group">
                 <div className={`w-12 h-12 bg-gradient-to-br from-${card.color}-100 to-${card.color}-50 rounded-xl flex items-center justify-center mb-4 sm:mb-6 group-hover:scale-110 transition-transform`}>
@@ -203,14 +205,14 @@ export function Login() {
       <div id="about" className="bg-gradient-to-b from-white to-gray-50 px-4 sm:px-8 md:px-16 lg:px-24 py-16 sm:py-20 md:py-28">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-12 sm:mb-16">
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-3 sm:mb-4 px-2">FINTO 시작하기</h2>
-            <p className="text-gray-600 text-base sm:text-lg px-2">3단계로 시작하는 스마트한 금융 관리</p>
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-3 sm:mb-4 px-2">Fintor 시작하기</h2>
+            <p className="text-gray-600 text-base sm:text-lg px-2">3단계로 시작하는 투자 학습 여정</p>
           </div>
           <div className="grid sm:grid-cols-3 gap-6 sm:gap-8">
             {[
-              { step: "1", title: "간편 가입", desc: "카카오 로그인으로 3초 만에 시작하세요. 복잡한 절차 없이 바로 시작할 수 있습니다." },
-              { step: "2", title: "이해도 테스트", desc: "AI가 당신의 금융 지식 수준을 분석하고 맞춤형 학습 경로를 제시합니다." },
-              { step: "3", title: "스마트 투자", desc: "개인화된 포트폴리오 추천을 받고 실시간으로 자산을 관리하세요." },
+              { step: "1", title: "카카오 간편 가입", desc: "카카오 로그인으로 3초 만에 시작하세요. 복잡한 가입 절차 없이 바로 출발할 수 있습니다." },
+              { step: "2", title: "투자 성향 설문", desc: "9개 문항으로 본인의 투자 성향을 파악합니다. 안정형부터 공격투자형까지 5단계로 진단해요." },
+              { step: "3", title: "매일 학습 · 시뮬레이션", desc: "일일 퀴즈와 시즌 시나리오로 경험치를 쌓고 레벨을 올리며 투자 감각을 키워보세요." },
             ].map((s) => (
               <div key={s.step} className="text-center">
                 <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-[#323278] to-[#4A5199] rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6">
@@ -230,17 +232,17 @@ export function Login() {
           <div className="bg-gradient-to-br from-[#323278] to-[#4A5199] p-8 sm:p-12 md:p-16 lg:p-20 rounded-2xl sm:rounded-3xl">
             <div className="max-w-4xl mx-auto text-center">
               <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-4 sm:mb-6 text-white">
-                왜 FINTO를 선택해야 할까요?
+                왜 Fintor를 선택해야 할까요?
               </h2>
               <p className="text-white/90 text-sm sm:text-base md:text-lg leading-relaxed mb-8 sm:mb-10 md:mb-12 px-2">
-                FINTO는 단순한 투자 플랫폼이 아닙니다. LLM 기술을 활용하여 당신의 금융 지식을 향상시키고,
-                최적의 투자 전략을 제시하는 개인 금융 파트너입니다.
+                Fintor는 단순한 금융 콘텐츠 사이트가 아닙니다. 게임처럼 매일 퀴즈를 풀고, 가상 자금으로
+                시즌 시나리오를 경험하며, 실제 자금 위험 없이 투자 감각을 키울 수 있는 학습 플랫폼입니다.
               </p>
               <div className="grid sm:grid-cols-3 gap-4 sm:gap-6 md:gap-8 text-left">
                 {[
-                  { label: "AI 기반", desc: "최신 LLM 기술로 정확한 분석" },
-                  { label: "개인화", desc: "당신만을 위한 맞춤 콘텐츠" },
-                  { label: "안전성", desc: "보안을 최우선으로 하는 플랫폼" },
+                  { label: "매일의 습관", desc: "퀴즈와 streak으로 학습 동기 부여" },
+                  { label: "안전한 연습", desc: "가상 자금으로 시즌 시뮬레이션" },
+                  { label: "AI 뉴스 분석", desc: "호재·악재 자동 분석된 시장 뉴스" },
                 ].map((item) => (
                   <div key={item.label} className="bg-white/10 backdrop-blur-sm p-6 sm:p-8 md:p-10 rounded-xl hover:bg-white/20 hover:scale-105 transition-all duration-300 cursor-pointer">
                     <div className="text-3xl sm:text-4xl font-bold text-white mb-2 sm:mb-3">{item.label}</div>
@@ -253,39 +255,79 @@ export function Login() {
         </div>
       </div>
 
+
+      <div id="about" className="bg-gradient-to-b from-white to-gray-50 px-4 sm:px-8 md:px-16 lg:px-24 py-16 sm:py-20 md:py-10">
+          <div className="text-center mb-12 sm:mb-16">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-3 sm:mb-4 px-2">지금 바로 투자 학습에 참여하세요!</h2>
+
+            <button
+                  type="button"
+                  onClick={handleKakaoLogin}
+                  className="transition-transform hover:scale-105 active:scale-95"
+                  aria-label="카카오로 시작하기"
+                >
+                  <img
+                    src={kakaoLoginButton}
+                    alt="카카오 로그인"
+                    className="h-12 sm:h-14"
+                  />
+                </button>
+          </div>
+      </div>
+      {/* 최종 CTA */}
+              <div className="mt-10 sm:mt-14 md:mt-16 flex flex-col items-center gap-3">
+                <p className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-3 sm:mb-4 px-2">
+                  
+                </p>
+                
+              </div>
+
       {/* Footer */}
       <footer id="contact" className="bg-gradient-to-b from-gray-50 to-gray-100 px-4 sm:px-8 md:px-16 lg:px-24 py-12 sm:py-16">
         <div className="max-w-6xl mx-auto">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 sm:gap-8 mb-6 sm:mb-8">
             <div className="col-span-2 md:col-span-1">
-              <h3 className="text-xl sm:text-2xl font-bold text-[#323278] mb-3 sm:mb-4">FINTO</h3>
-              <p className="text-gray-600 text-xs sm:text-sm">LLM 기반 개인화 금융 학습 및 포트폴리오 관리 플랫폼</p>
+              <h3 className="text-xl sm:text-2xl font-bold text-[#323278] mb-3 sm:mb-4">Fintor</h3>
+              <p className="text-gray-600 text-xs sm:text-sm">매일 풀고 레벨업하는 투자 학습 플랫폼</p>
             </div>
             <div>
               <h4 className="font-bold text-gray-900 mb-3 sm:mb-4 text-sm sm:text-base">서비스</h4>
               <ul className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm text-gray-600">
-                <li>금융 이해도 분석</li><li>맞춤형 학습</li><li>포트폴리오 추천</li><li>자산 관리</li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-bold text-gray-900 mb-3 sm:mb-4 text-sm sm:text-base">회사</h4>
-              <ul className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm text-gray-600">
-                <li>회사 소개</li><li>블로그</li><li>채용</li><li>문의하기</li>
+                <li>일일 퀴즈 챌린지</li><li>가상 시즌 시뮬레이션</li><li>AI 시장 뉴스</li><li>투자 성향 진단</li>
               </ul>
             </div>
             <div>
               <h4 className="font-bold text-gray-900 mb-3 sm:mb-4 text-sm sm:text-base">법적 고지</h4>
               <ul className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm text-gray-600">
-                <li>이용약관</li><li>개인정보처리방침</li><li>투자 유의사항</li>
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => setPolicyOpen(true)}
+                    className="hover:text-[#1A237E] hover:underline transition-colors text-left"
+                  >
+                    이용약관
+                  </button>
+                </li>
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => setPolicyOpen(true)}
+                    className="hover:text-[#1A237E] hover:underline transition-colors text-left"
+                  >
+                    개인정보처리방침
+                  </button>
+                </li>
               </ul>
             </div>
           </div>
           <div className="border-t border-gray-300 pt-6 sm:pt-8 text-center text-xs sm:text-sm text-gray-600">
-            <p>© 2024 FINTO. All rights reserved.</p>
+            <p>© 2026 Fintor. All rights reserved.</p>
             <p className="mt-2">투자 권유가 아니며, 투자의 최종 책임은 투자자 본인에게 있습니다.</p>
           </div>
         </div>
       </footer>
+
+      <PolicyModal open={policyOpen} onClose={() => setPolicyOpen(false)} />
     </div>
   );
 }

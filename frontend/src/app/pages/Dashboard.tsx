@@ -367,33 +367,33 @@ export function Dashboard() {
                       <span aria-hidden>📘</span>
                       <div>
                         <span className="font-bold text-on-surface">일일 퀴즈</span>
-                        <span className="text-on-surface-variant"> — 정답 1문제당 +10 EXP · 만점 보너스 +20</span>
+                        <span className="text-on-surface-variant"> — 정답 1문제당 +10 EXP · 만점 보너스 +20 EXP</span>
                       </div>
                     </li>
                     <li className="flex gap-2">
                       <span aria-hidden>🎯</span>
                       <div>
                         <span className="font-bold text-on-surface">시뮬레이터 시즌</span>
-                        <span className="text-on-surface-variant"> — 시즌 완료 시 점수 기반 EXP</span>
+                        <span className="text-on-surface-variant"> — 시즌 완료 시 점수 기반 EXP 제공</span>
                       </div>
                     </li>
                     <li className="flex gap-2">
                       <span aria-hidden>🔥</span>
                       <div>
                         <span className="font-bold text-on-surface">무한 챌린지</span>
-                        <span className="text-on-surface-variant"> — 최고 기록 갱신 시</span>
+                        <span className="text-on-surface-variant"> — 시즌 종료시 순위 별 EXP 제공</span>
                       </div>
                     </li>
                     <li className="flex gap-2">
                       <span aria-hidden>📅</span>
                       <div>
-                        <span className="font-bold text-on-surface">연속 streak</span>
-                        <span className="text-on-surface-variant"> — milestone(10·30·100일) 달성 보상</span>
+                        <span className="font-bold text-on-surface">연속 일일 퀴즈 풀기</span>
+                        <span className="text-on-surface-variant"> — 각 연속 기간 별 보상 EXP 제공</span>
                       </div>
                     </li>
                   </ul>
                   <p className="mt-3 pt-3 border-t border-outline-variant/20 text-[10px] text-on-surface-variant/70">
-                    ※ 정확한 보상 수치는 추후 안내 예정
+                    ※ 보상 수치는 계속 업데이트 됩니다.
                   </p>
                 </div>
               )}
@@ -565,7 +565,7 @@ export function Dashboard() {
                 </div>
                 <div className="flex justify-between mt-2 flex-wrap gap-1 items-baseline">
                   <span className="text-sm font-semibold text-on-surface-variant flex items-center gap-1">
-                    🔥 현재 streak {streak}일
+                    🔥 현재 {streak}일 연속 달성
                   </span>
                   <span className="text-sm font-bold text-on-surface-variant tabular-nums">
                     누적 정답률 {quizAccuracy !== null ? `${quizAccuracy}%` : '—'}
@@ -714,7 +714,7 @@ export function Dashboard() {
       </section>
 
       {/* ─── 섹션 3: 실시간 시장 지수 (기존 유지) ────────────────────────────── */}
-      <section className="space-y-4">
+      <section data-tour="market-indices" className="space-y-4">
         <div className="flex justify-between items-end">
           <h2 className="text-xl font-extrabold text-primary font-headline">실시간 시장 지수</h2>
           <span className="text-xs text-on-surface-variant font-medium">

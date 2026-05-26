@@ -63,9 +63,6 @@ export function Sidebar() {
             <p className="font-bold text-primary text-sm">{nickname}</p>
           </div>
         </div>
-        <button className="w-full py-2 px-4 bg-primary text-white rounded-lg text-xs font-semibold hover:translate-x-1 transition-transform">
-          자산 리포트 보기
-        </button>
       </div>
       <nav className="space-y-2">
         {menuItems.map((item) => {
