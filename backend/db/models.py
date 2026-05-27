@@ -219,6 +219,7 @@ class QuizQuestion(Base):
     options     = Column(JSONB, nullable=False)                # ["O","X"] or ["①..","②..","③..","④.."]
     answer      = Column(String, nullable=False)
     explanation = Column(Text, nullable=False)
+    hint        = Column(Text, nullable=True)
     created_at  = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     progress = relationship("QuizUserProgress", back_populates="question", cascade="all, delete-orphan")
