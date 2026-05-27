@@ -524,7 +524,11 @@ def get_quiz_status(db: Session, user_id: int) -> dict:
     }
 
 
-def submit_infinite_score(db: Session, user_id: int, score: int, season: int = 1) -> dict:
+def submit_infinite_score(db: Session, user_id: int, score: int) -> dict:
+    # 하드코딩 대신 DB에서 현재 시즌 번호를 조회
+    current = get_current_season(db)
+    season = current.season if current else 1
+
     existing = (
         db.query(models.QuizSeasonScore)
         .filter(
@@ -542,12 +546,12 @@ def submit_infinite_score(db: Session, user_id: int, score: int, season: int = 1
         )
         db.add(entry)
         db.commit()
-        return {"best_score": score}
+        return {"best_score": score, "season": season}
     if score > existing.best_score:
         existing.best_score = score
         existing.updated_at = datetime.now(timezone.utc)
         db.commit()
-    return {"best_score": existing.best_score}
+    return {"best_score": existing.best_score, "season": season}
 
 
 
