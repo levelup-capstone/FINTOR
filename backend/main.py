@@ -5,8 +5,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from db import models
 from db.session import engine, get_db
-from seeds.game import seed as run_game_seed
-from seeds.quiz import seed as run_quiz_seed
+from seeds.game_seed import seed as run_game_seed
+from seeds.quiz_seed import seed as run_quiz_seed
 
 from utils.market import collect_and_save_market_data
 from utils.news import run_news_pipeline
