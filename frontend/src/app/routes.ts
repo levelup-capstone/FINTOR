@@ -11,7 +11,6 @@ import { SimulatorCalendar } from "./pages/SimulatorCalendar";
 import { SimulatorResult } from "./pages/SimulatorResult";
 import { Quiz } from "./pages/Quiz";
 import { Settings } from "./pages/Settings";
-import { DevAuth } from "./pages/DevAuth"; // [DEV ONLY] 배포 전 제거
 
 export const router = createBrowserRouter([
   {
@@ -21,11 +20,6 @@ export const router = createBrowserRouter([
   {
     path: "/oauth/kakao",
     Component: KakaoCallback,
-  },
-  // [DEV ONLY] 모바일 테스트용 — 배포 전 제거
-  {
-    path: "/dev-auth",
-    Component: DevAuth,
   },
   {
     path: "/survey",

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { fetchParticipation, confirmAllocation, devResetParticipation, INITIAL_CASH, type ParticipationData, type DayNews, type AllocateResult } from './simulatorApi';
+import { fetchParticipation, confirmAllocation, INITIAL_CASH, type ParticipationData, type DayNews, type AllocateResult } from './simulatorApi';
 import { SimulatorTourProvider } from '../components/SimulatorTourContext';
 import { SimulatorTourOverlay } from '../components/SimulatorTourOverlay';
 
@@ -18,7 +18,6 @@ function notifySeasonExpIfFinalized(result: AllocateResult) {
     gained_levels: result.gained_levels,
   };
   sessionStorage.setItem('fintor_pending_exp_notify', JSON.stringify(payload));
-  console.log(`🎯 시즌 완료! +${result.granted_exp} EXP → Level ${result.new_level} (exp ${result.new_exp})${result.leveled_up ? ` 🎉 LEVEL UP (+${result.gained_levels})` : ''}`);
 }
 const STEP_PCT = 10;
 
@@ -879,21 +878,6 @@ function SimulatorDashboardContent() {
                 className="flex-1 md:flex-none bg-[#1A237E] text-white font-bold text-lg px-8 py-4 rounded-xl shadow-sm hover:shadow-md hover:bg-[#1A237E]/90 transition-all transform hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
               >
                 {isLastDay ? '결과 보기' : (todayConfirmed ? '오늘 매매 확정 완료' : '오늘의 매매 확정하기')}
-              </button>
-              {/* [DEV ONLY] 시나리오 진행 전체 초기화 버튼 - 테스트 전용, 배포 전 제거 필요 */}
-              <button
-                onClick={async () => {
-                  if (!confirm('[DEV] 모든 회차 진행을 초기화하시겠습니까?\nDB에 기록된 모든 배분 내역이 삭제됩니다.')) return;
-                  const result = await devResetParticipation(); // DEV ONLY
-                  if (result) {
-                    localStorage.removeItem('participationId');
-                    navigate('/dashboard/simulator');
-                  }
-                }}
-                className="px-4 py-4 rounded-xl border-2 border-dashed border-red-400 text-red-500 font-bold text-sm hover:bg-red-50 transition-colors"
-                title="[DEV] 시나리오 초기화"
-              >
-                <span className="material-symbols-outlined text-[20px] align-middle">restart_alt</span>
               </button>
             </div>
             <span className="text-on-surface-variant text-xs mt-3 flex items-center gap-1">

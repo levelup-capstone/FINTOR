@@ -246,25 +246,3 @@ def get_quiz_ranking_endpoint(
 ):
     data = crud.get_quiz_ranking(db, current_user.id)
     return {"success": True, "data": data}
-
-
-# TODO: 배포 전 이 엔드포인트 제거
-@router.post("/api/quiz/dev/advance-season")
-def dev_advance_season(db: Session = Depends(get_db)):
-    result = crud.dev_force_end_season(db)
-    return {"success": True, "data": result}
-
-
-# TODO: 배포 전 이 엔드포인트 제거
-@router.post("/api/quiz/dev/reset-daily")
-def dev_reset_daily_quiz(
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
-):
-    today_kst = datetime.now(KST).date()
-    completion = crud.get_daily_completion(db, current_user.id, today_kst)
-    if completion:
-        db.delete(completion)
-        db.commit()
-        return {"success": True, "data": {"deleted": True}}
-    return {"success": True, "data": {"deleted": False}}

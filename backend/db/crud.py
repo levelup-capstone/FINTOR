@@ -618,29 +618,6 @@ def get_or_create_current_season(db: Session) -> models.QuizSeason:
     return season
 
 
-# TODO: 배포 전 제거 — DEV 전용: 현재 시즌을 즉시 종료하여 distribute_season_exp 트리거
-def dev_force_end_season(db: Session) -> dict:
-    """현재 진행 중인 시즌의 end_at을 과거로 당겨 즉시 종료 처리."""
-    season = get_current_season(db)
-    if season is None:
-        return {"error": "진행 중인 시즌이 없습니다."}
-    if season.exp_distributed:
-        return {"error": f"시즌 {season.season}은 이미 종료 처리되었습니다."}
-
-    # end_at을 1초 전으로 설정 → distribute_season_exp가 종료 시즌으로 인식
-    season.end_at = datetime.now(timezone.utc) - timedelta(seconds=1)
-    db.commit()
-
-    distributed = distribute_season_exp(db)
-    new_season = get_current_season(db)
-    return {
-        "ended_season":  season.season,
-        "distributed":   distributed,
-        "next_season":   new_season.season if new_season else None,
-        "next_end_at":   new_season.end_at.isoformat() if new_season else None,
-    }
-
-
 def distribute_season_exp(db: Session) -> int:
     """종료된 시즌에 랭킹 기반 EXP를 지급하고 다음 시즌을 자동 생성.
 

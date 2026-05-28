@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import {
   fetchTodayQuiz, submitAnswer, checkAnswer, fetchQuizStatus,
-  fetchInfinitePool, submitInfiniteScore, fetchRanking, completeDailyQuiz, devResetDailyQuiz, devAdvanceSeason,
+  fetchInfinitePool, submitInfiniteScore, fetchRanking, completeDailyQuiz,
   type QuizQuestion, type SubmitResult, type RankingData,
 } from './quizApi';
 import { LevelUpModal, type LevelUpPayload } from '../components/LevelUpModal';
@@ -192,46 +192,6 @@ export function Quiz() {
         onStart={() => setInfiniteOpen(true)}
         onRanking={() => setRankingOpen(true)}
       />
-
-      {/* [DEV ONLY] 개발 전용 버튼 - 테스트 전용, 배포 전 제거 필요 */}
-      <div className="flex justify-center gap-3 pt-2">
-        <button
-          onClick={async () => {
-            if (!confirm('[DEV] 오늘의 일일 퀴즈 진행 기록을 초기화하시겠습니까?')) return;
-            await devResetDailyQuiz(); // TODO: 배포 전 제거
-            setDailyResult(null);
-            setSolving(false);
-            setCurrentIdx(0);
-            setSelectedOpt(null);
-            setRevealed(false);
-            setSessionResults([]);
-            setCachedQuestions([]);
-          }}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border-2 border-dashed border-red-400 text-red-500 font-bold text-xs hover:bg-red-50 transition-colors"
-          title="[DEV] 일일 퀴즈 초기화"
-        >
-          <span className="material-symbols-outlined text-[16px]">restart_alt</span>
-          [DEV] 일일 퀴즈 초기화
-        </button>
-        {/* TODO: 배포 전 제거 — DEV 전용: 현재 시즌 강제 종료 + EXP 지급 + 다음 시즌 시작 */}
-        <button
-          onClick={async () => {
-            if (!confirm('[DEV] 현재 시즌을 즉시 종료하고 다음 시즌을 시작하시겠습니까?\n랭킹 기반 EXP가 모든 참여자에게 지급됩니다.')) return;
-            const result = await devAdvanceSeason();
-            if (result) {
-              alert(`[DEV] 시즌 ${result.ended_season} 종료 완료\n지급 인원: ${result.distributed}명\n다음 시즌: ${result.next_season}`);
-              fetchRanking().then((d) => {
-                if (d) { setMyRank(d.my_rank); setTotalUsers(d.total_users); setMyBest(d.my_score); setCurrentSeason(d.season); }
-              });
-            }
-          }}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border-2 border-dashed border-red-400 text-red-500 font-bold text-xs hover:bg-red-50 transition-colors"
-          title="[DEV] 다음 시즌으로"
-        >
-          <span className="material-symbols-outlined text-[16px]">skip_next</span>
-          [DEV] 다음 시즌으로
-        </button>
-      </div>
 
       {infiniteOpen && (
         <InfiniteModal

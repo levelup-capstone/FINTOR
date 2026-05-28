@@ -126,11 +126,6 @@ export async function advanceDay(participationId: number): Promise<{ day_index: 
   return apiCall<{ day_index: number }>(`/api/game/participation/${participationId}/advance-day`, { method: 'POST' });
 }
 
-// [DEV ONLY] 시나리오 진행 전체 초기화 - 테스트 전용, 배포 전 제거 필요
-export async function devResetParticipation(): Promise<{ deleted_count: number } | null> {
-  return apiCall(`/api/game/dev/reset-all`, { method: 'POST' });
-}
-
 export async function fetchScenarios(): Promise<ScenarioInfo[]> {
   return (await apiCall<ScenarioInfo[]>(`/api/game/scenarios`, {}, [])) ?? [];
 }
