@@ -233,7 +233,16 @@ export function Quiz() {
         </button>
       </div>
 
-      {infiniteOpen && <InfiniteModal onClose={() => setInfiniteOpen(false)} onBestScore={(best) => setMyBest(best)} />}
+      {infiniteOpen && (
+        <InfiniteModal
+          onClose={() => setInfiniteOpen(false)}
+          onFinished={() => {
+            fetchRanking().then((d) => {
+              if (d) { setMyRank(d.my_rank); setTotalUsers(d.total_users); setMyBest(d.my_score); setCurrentSeason(d.season); }
+            });
+          }}
+        />
+      )}
       {rankingOpen && <RankingModal onClose={() => setRankingOpen(false)} />}
       <LevelUpModal
         open={levelUpPayload !== null}
@@ -513,7 +522,7 @@ function SeasonChallengeCard({
 }
 
 // ─── 무한 챌린지 모달 ────────────────────────────────────────────────────────
-function InfiniteModal({ onClose, onBestScore }: { onClose: () => void; onBestScore: (best: number) => void }) {
+function InfiniteModal({ onClose, onFinished }: { onClose: () => void; onFinished: () => void }) {
   const [pool, setPool] = useState<QuizQuestion[]>([]);
   const [poolLoading, setPoolLoading] = useState(true);
   const [idx, setIdx] = useState(0);
@@ -551,8 +560,8 @@ function InfiniteModal({ onClose, onBestScore }: { onClose: () => void; onBestSc
     } else {
       const finalStreak = streak;
       setTimeout(async () => {
-        const result = await submitInfiniteScore(finalStreak);
-        if (result) onBestScore(result.best_score);
+        await submitInfiniteScore(finalStreak);
+        onFinished();
         setFinished(true);
       }, 1200);
     }
