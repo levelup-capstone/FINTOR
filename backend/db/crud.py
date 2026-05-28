@@ -586,12 +586,26 @@ def _kst_midnight(days_offset: int = 0) -> datetime:
     return today_kst + timedelta(days=days_offset)
 
 
+def _next_monday_kst(from_dt: datetime) -> datetime:
+    """from_dt 기준으로 다음 주 월요일(또는 그 다음 주 월요일) KST 자정을 반환.
+
+    - from_dt가 월요일이면 7일 후 월요일
+    - 그 외이면 돌아오는 월요일 + 7일 (최소 8일, 최대 14일 후)
+    """
+    from_kst = from_dt.astimezone(_KST).replace(hour=0, minute=0, second=0, microsecond=0)
+    weekday = from_kst.weekday()  # 월=0, 일=6
+    days_to_next_monday = (7 - weekday) % 7  # 오늘이 월요일이면 0
+    if days_to_next_monday == 0:
+        days_to_next_monday = 7  # 월요일이면 다음 주 월요일
+    return from_kst + timedelta(days=days_to_next_monday + 7)
+
+
 def get_or_create_current_season(db: Session) -> models.QuizSeason:
     season = get_current_season(db)
     if season is None:
-        # 오늘 KST 자정 시작, 14일 후 KST 자정 종료
+        # 오늘 KST 자정 시작, 다음 다음 월요일 KST 자정 종료
         start_at = _kst_midnight()
-        end_at   = _kst_midnight(SEASON_DURATION_DAYS)
+        end_at   = _next_monday_kst(start_at)
         season = models.QuizSeason(
             season=1,
             start_at=start_at,
@@ -670,7 +684,7 @@ def distribute_season_exp(db: Session) -> int:
     next_season = models.QuizSeason(
         season=season.season + 1,
         start_at=season.end_at,
-        end_at=season.end_at + timedelta(days=SEASON_DURATION_DAYS),
+        end_at=_next_monday_kst(season.end_at),
     )
     db.add(next_season)
     db.commit()
