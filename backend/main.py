@@ -1,16 +1,31 @@
-from fastapi import FastAPI, Depends
+import threading
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
+from apscheduler.schedulers.background import BackgroundScheduler
 
-import models, schemas, crud
-from database import engine, get_db
+from db import models
+from db.session import engine, get_db
+from seeds.game_seed import seed as run_game_seed
+from seeds.quiz_seed import seed as run_quiz_seed
 
-# DB 테이블 자동 생성
+from utils.market import collect_and_save_market_data
+from utils.news import run_news_pipeline
+from db.crud import get_or_create_current_season, distribute_season_exp
+
+from routers import auth, market, survey, game, quiz, user
+
+
+
+# ── DB 초기화 ─────────────────────────────────────────────────────────────────
+# models.py에 정의된 모든 테이블을 DB에 생성 (이미 존재하면 스킵)
 models.Base.metadata.create_all(bind=engine)
 
-app = FastAPI()
+app = FastAPI(title="Fintor Auth Server")
 
-# 프론트엔드(React) 접근 허용
+
+
+# ── CORS 설정 ─────────────────────────────────────────────────────────────────
+# 프론트엔드(localhost:3000)에서의 요청만 허용
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],
@@ -19,17 +34,61 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 기본 통신 확인용 주소
-@app.get("/")
-def read_root():
-    return {"message": "FastAPI 서버가 정상적으로 실행 중입니다!"}
 
-# DB 데이터 추가 주소
-@app.post("/items/", response_model=schemas.ItemResponse)
-def create_item(item: schemas.ItemCreate, db: Session = Depends(get_db)):
-    return crud.create_item(db=db, item=item)
 
-# DB 데이터 조회 주소
-@app.get("/items/", response_model=list[schemas.ItemResponse])
-def read_items(db: Session = Depends(get_db)):
-    return crud.get_items(db)
+# ── 라우터 등록 ───────────────────────────────────────────────────────────────
+app.include_router(auth.router)
+app.include_router(market.router)
+app.include_router(survey.router)
+app.include_router(game.router)
+app.include_router(quiz.router)
+app.include_router(user.router)
+
+
+
+# ── 스케줄러 ──────────────────────────────────────────────────────────────────
+scheduler = BackgroundScheduler()
+
+
+@app.on_event("startup")
+def startup_event():
+    print("🏢 운영 모드입니다.")
+
+    # 시드 데이터: 게임 시나리오·퀴즈 문제가 없으면 초기 데이터 삽입
+    run_game_seed()
+    db = next(get_db())
+    try:
+        run_quiz_seed(db)
+    finally:
+        db.close()
+
+    # 서버 시작 직후 시장 데이터·뉴스를 즉시 1회 수집 (스케줄 첫 실행 전 공백 방지)
+    threading.Thread(target=collect_and_save_market_data, daemon=True).start()
+    threading.Thread(target=run_news_pipeline, daemon=True).start()
+
+    # 퀴즈 시즌이 없으면 시즌 1을 즉시 생성
+    season_db = next(get_db())
+    try:
+        get_or_create_current_season(season_db)
+    finally:
+        season_db.close()
+
+    def _run_distribute_season_exp():
+        dist_db = next(get_db())
+        try:
+            distribute_season_exp(dist_db)
+        finally:
+            dist_db.close()
+
+    # 주기적 수집: 시장 지수 5분 / 뉴스 30분 / 시즌 종료 EXP 지급 1시간
+    scheduler.add_job(collect_and_save_market_data, "interval", minutes=5)
+    scheduler.add_job(run_news_pipeline, "interval", minutes=30)
+    scheduler.add_job(_run_distribute_season_exp, "interval", hours=1)
+    scheduler.start()
+    print("⏰ 스케줄러 시작 (지수 5분 / 뉴스 30분 / 시즌 EXP 1시간)")
+
+
+@app.on_event("shutdown")
+def shutdown_event():
+    scheduler.shutdown()
+    print("⏰ 스케줄러 종료")

@@ -5,3 +5,12 @@ psycopg2-binary
 pydantic
 requests
 python-dotenv
+PyJWT
+finnhub-python
+yfinance==0.2.54
+apscheduler
+openai
+beautifulsoup4
+lxml
+rapidfuzz
+scikit-learn

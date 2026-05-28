@@ -1,0 +1,15 @@
+@import './fonts.css';
+@import './tailwind.css';
+@import './theme.css';
+
+@keyframes navy-blink {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(26, 35, 126, 0.6), 0 0 0 4px rgba(26, 35, 126, 0.9);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(26, 35, 126, 0), 0 0 0 4px rgba(26, 35, 126, 0.1);
+  }
+}
+.animate-navy-blink {
+  animation: navy-blink 1.4s ease-in-out infinite;
+}

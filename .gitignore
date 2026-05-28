@@ -18,3 +18,11 @@ build/
 # OS Files
 .DS_Store
 Thumbs.db
+
+# Claude
+CLAUDE.md
+.claude/
+
+# md
+frontend_study.md
+모의투자_시뮬레이터_기획안.md

@@ -1,0 +1,377 @@
+<!DOCTYPE html><html class="light" lang="ko"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "surface-container-highest": "#e1e3e4",
+              "surface-container-high": "#e7e8e9",
+              "surface-bright": "#f8f9fa",
+              "on-primary-container": "#7a96dd",
+              "inverse-surface": "#2e3132",
+              "surface-container-low": "#f3f4f5",
+              "inverse-primary": "#b1c5ff",
+              "background": "#f8f9fa",
+              "on-tertiary-fixed": "#22005d",
+              "on-background": "#191c1d",
+              "on-error": "#ffffff",
+              "error-container": "#ffdad6",
+              "primary-fixed-dim": "#b1c5ff",
+              "on-secondary-container": "#445781",
+              "surface": "#f8f9fa",
+              "surface-container": "#edeeef",
+              "secondary": "#4b5e88",
+              "primary": "#001846",
+              "tertiary-container": "#3a0091",
+              "on-tertiary": "#ffffff",
+              "tertiary-fixed-dim": "#cfbcff",
+              "surface-dim": "#d9dadb",
+              "tertiary-fixed": "#e9ddff",
+              "on-primary-fixed-variant": "#264486",
+              "on-primary-fixed": "#001947",
+              "surface-tint": "#405c9f",
+              "on-secondary-fixed": "#021a41",
+              "primary-container": "#042c6e",
+              "secondary-fixed": "#d8e2ff",
+              "surface-container-lowest": "#ffffff",
+              "inverse-on-surface": "#f0f1f2",
+              "on-secondary": "#ffffff",
+              "primary-fixed": "#dae2ff",
+              "on-surface-variant": "#454652",
+              "on-secondary-fixed-variant": "#33466e",
+              "outline-variant": "#c6c5d4",
+              "on-tertiary-container": "#a582ff",
+              "tertiary": "#22005c",
+              "error": "#ba1a1a",
+              "secondary-fixed-dim": "#b3c6f6",
+              "on-tertiary-fixed-variant": "#5400cc",
+              "surface-variant": "#e1e3e4",
+              "on-primary": "#ffffff",
+              "on-error-container": "#93000a",
+              "secondary-container": "#bbceff",
+              "outline": "#767683",
+              "on-surface": "#191c1d"
+            },
+            fontFamily: {
+              "headline": ["Manrope"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.5rem", "lg": "1rem", "xl": "1.5rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        .font-headline { font-family: 'Manrope', sans-serif; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        .donut-chart {
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            background: conic-gradient(
+                #1A237E 0% 45%,      /* 주식 (Stocks) - Primary Indigo */
+                #7C4DFF 45% 70%,     /* 코인 (Crypto) - Modern Purple */
+                #90A4AE 70% 85%,     /* 채권 (Bonds) - Soft Blue-Grey */
+                #FFB300 85% 100%     /* 금 (Gold) - Golden Amber */
+            );
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        @media (min-width: 768px) {
+            .donut-chart {
+                width: 280px;
+                height: 280px;
+            }
+        }
+        .donut-chart::after {
+            content: "";
+            position: absolute;
+            width: 130px;
+            height: 130px;
+            background: #ffffff;
+            border-radius: 50%;
+        }
+        @media (min-width: 768px) {
+            .donut-chart::after {
+                width: 180px;
+                height: 180px;
+            }
+        }
+        .chart-inner-text {
+            position: relative;
+            z-index: 10;
+            text-align: center;
+        }
+        .glass-effect {
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-surface min-h-screen">
+<!-- Top Navigation Bar -->
+<header class="docked full-width top-0 sticky z-50 bg-slate-50/60 dark:bg-slate-950/60 backdrop-blur-md">
+<div class="flex justify-between items-center w-full px-6 py-4 max-w-7xl mx-auto">
+<div class="flex items-center gap-8">
+<span class="text-2xl font-black text-[#1A237E] dark:text-white tracking-tighter font-headline" style="">Finto</span>
+<nav class="hidden md:flex gap-4">
+<a class="text-[#1A237E] dark:text-white font-bold border-b-2 border-[#1A237E] py-1" href="#" style="">대시보드</a>
+<a class="text-slate-500 dark:text-slate-400 font-medium hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors px-3 py-1 rounded-lg" href="#" style="">기록</a>
+<a class="text-slate-500 dark:text-slate-400 font-medium hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors px-3 py-1 rounded-lg" href="#" style="">퀴즈</a>
+<a class="text-slate-500 dark:text-slate-400 font-medium hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors px-3 py-1 rounded-lg" href="#" style="">뉴스</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<button class="p-2 rounded-full hover:bg-slate-200/50 transition-colors relative" style="">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="notifications" style="">notifications</span>
+<span class="absolute top-2 right-2 w-2 h-2 bg-error rounded-full"></span>
+</button>
+<div class="w-10 h-10 rounded-full overflow-hidden border-2 border-surface-container-high">
+<img alt="사용자 프로필" class="w-full h-full object-cover" data-alt="professional headshot of a smiling Korean investor in a modern office setting, soft natural lighting, high-end photography" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBwVGsq-8BqQ7jviVIQq9-yAzqxvS-TfCuC7DPTpvd1R35S6SLCNe_TvbbsPrQh9USBOBcsDWsa0td4bAd-5b75OMD_GvBloNUmZmpcSHqxjsHGMmyPGaye2oLMfY2sfnEdz4byusa28ulq05FFUb53Vl0eze5DyPwHJxIOVqw0Fdm1Z27SYIDez9_Ed1xAsDTGRGalGDhSuUxVf8OZLGB2dgZupXDLiR-WU8QNaQ11-YWvtBWkOP_UFlIYmtT0uC31nf_-hNZwjs7D" style="">
+</div>
+</div>
+</div>
+</header>
+<main class="max-w-7xl mx-auto px-6 py-8 flex flex-col lg:flex-row gap-8">
+<!-- Sidebar Navigation (Desktop) -->
+<aside class="hidden lg:flex flex-col w-64 space-y-6">
+<div class="bg-surface-container-lowest p-6 rounded-xl space-y-4">
+<div class="flex items-center gap-3">
+<div class="w-12 h-12 rounded-full overflow-hidden">
+<img alt="사용자 프로필" class="w-full h-full object-cover" data-alt="close up profile of a professional in a minimalist setting, clean lines, bright airy feel" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA7sgLfYkD03psoDzGGS2Roa9RCe2_BrLWkqPxH7FhF5tGtDpDiup-RuZKGQvPoBlxGDEMAx5JWf-4mdo_1e7htooKEIHRUsa3r-HcYT7_UCufp9JZeT5wFV7X8hj2O3VLnoz66_zVR1y1MClFzJ7DjYO7Rzb4Z6GEBXkvktgGJxYw_4iwjgzEGDu2Y-k_-p2ETrAD_RAjel4D1y5VtEV_GQSue0KqYjQ450rudGg2u78Gjk0k0N4bjmsqlBMnZhHMl5mrxoLlZEdkl" style="">
+</div>
+<div>
+<p class="font-bold text-primary text-sm" style="">고결한 투자자</p>
+<p class="text-xs text-on-surface-variant" style="">Premium Member</p>
+</div>
+</div>
+<button class="w-full py-2 px-4 bg-primary text-white rounded-lg text-xs font-semibold hover:translate-x-1 transition-transform" style="">
+                자산 리포트 보기
+            </button>
+</div>
+<nav class="space-y-2">
+<a class="flex items-center gap-3 p-3 bg-primary text-white rounded-lg shadow-lg shadow-[#1A237E]/20 transition-transform" href="#" style="">
+<span class="material-symbols-outlined" data-icon="dashboard" style="">dashboard</span>
+<span class="font-semibold text-sm" style="">대시보드</span>
+</a>
+<a class="flex items-center gap-3 p-3 text-slate-600 hover:bg-slate-200 rounded-lg transition-transform hover:translate-x-1" href="#" style="">
+<span class="material-symbols-outlined" data-icon="edit_note" style="">edit_note</span>
+<span class="font-semibold text-sm" style="">기록</span>
+</a>
+<a class="flex items-center gap-3 p-3 text-slate-600 hover:bg-slate-200 rounded-lg transition-transform hover:translate-x-1" href="#" style="">
+<span class="material-symbols-outlined" data-icon="quiz" style="">quiz</span>
+<span class="font-semibold text-sm" style="">퀴즈</span>
+</a>
+<a class="flex items-center gap-3 p-3 text-slate-600 hover:bg-slate-200 rounded-lg transition-transform hover:translate-x-1" href="#" style="">
+<span class="material-symbols-outlined" data-icon="newspaper" style="">newspaper</span>
+<span class="font-semibold text-sm" style="">뉴스</span>
+</a>
+<a class="flex items-center gap-3 p-3 text-slate-600 hover:bg-slate-200 rounded-lg transition-transform hover:translate-x-1" href="#" style="">
+<span class="material-symbols-outlined" data-icon="settings" style="">settings</span>
+<span class="font-semibold text-sm" style="">설정</span>
+</a>
+</nav>
+</aside>
+<!-- Content Canvas -->
+<div class="flex-1 space-y-8">
+<!-- Hero Section: Portfolio Chart -->
+<section class="bg-surface-container-lowest rounded-xl flex flex-col relative overflow-hidden">
+<!-- Level & XP Section -->
+<div class="w-full bg-slate-100/50 dark:bg-slate-900/50 p-6 md:p-8 rounded-t-xl border-b border-surface-container-low">
+<div class="space-y-3">
+<div class="flex justify-between px-1 items-baseline">
+<span class="text-xl md:text-3xl font-black text-[#1A237E] dark:text-indigo-300 font-headline uppercase tracking-tighter italic drop-shadow-sm" style="">LEVEL 12</span>
+<span class="text-[9px] md:text-[10px] font-bold text-slate-600 dark:text-slate-400 tracking-wider uppercase" style="">XP 2,450 / 5,000</span>
+</div>
+<div class="w-full h-3 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden shadow-inner">
+<div class="h-full bg-gradient-to-r from-[#1A237E] via-[#7C4DFF] to-[#D500F9] rounded-full" style="width: 49%"></div>
+</div>
+</div>
+<div class="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-200/50 dark:border-slate-800/50">
+<button class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-800 border border-outline-variant/30 rounded-lg text-[10px] md:text-[11px] font-bold text-[#1A237E] dark:text-indigo-300 hover:bg-surface-container-low transition-colors shadow-sm" style="">
+<span class="material-symbols-outlined text-sm" style="">edit_note</span>기록쓰고 경험치 쌓기
+                </button>
+<button class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-800 border border-outline-variant/30 rounded-lg text-[10px] md:text-[11px] font-bold text-[#1A237E] dark:text-indigo-300 hover:bg-surface-container-low transition-colors shadow-sm" style="">
+<span class="material-symbols-outlined text-sm" style="">quiz</span>일일 퀴즈로 경험치 쌓기
+                </button>
+</div>
+</div>
+<div class="p-6 md:p-8 flex flex-col md:flex-row items-center gap-8 md:gap-12">
+<div class="flex-1 space-y-6 md:space-y-8 w-full">
+<header>
+<span class="inline-block px-2 py-0.5 md:px-3 md:py-1 rounded-full bg-secondary-fixed text-on-secondary-fixed text-[8px] md:text-[10px] font-bold tracking-widest uppercase mb-2 md:mb-4" style="">AI Recommendation</span>
+<div class="flex items-center gap-3 md:gap-4 mb-1 md:mb-3">
+<h1 class="text-2xl md:text-4xl font-black font-headline tracking-tight text-[#000827] dark:text-white" style="">안정적 관리형</h1>
+<button class="inline-flex items-center gap-1 md:gap-1.5 px-2 py-1 md:px-3 md:py-1.5 bg-white border border-outline-variant rounded-lg text-[10px] md:text-xs font-bold text-on-surface-variant hover:bg-surface-container-low transition-colors shadow-sm" style="">
+<span class="material-symbols-outlined text-xs md:text-sm" style="">edit</span>자산 비율 수정
+                        </button>
+</div>
+</header>
+<div class="grid grid-cols-4 sm:grid-cols-2 lg:grid-cols-2 gap-2 md:gap-5">
+<div class="flex flex-col sm:flex-row items-center sm:items-center gap-1.5 sm:gap-4 p-2 md:p-5 rounded-xl md:2xl bg-surface-container-low transition-all hover:shadow-md border border-transparent hover:border-outline-variant text-center sm:text-left">
+<div class="w-2.5 h-2.5 md:w-4 md:h-4 rounded-full bg-primary flex-shrink-0" style="background-color: #1A237E;"></div>
+<div class="flex flex-col">
+<p class="text-[8px] md:text-xs text-on-surface-variant font-extrabold uppercase tracking-tight" style="">주식</p>
+<p class="text-[10px] sm:text-lg md:text-2xl font-black font-headline text-primary" style="">45.0%</p>
+</div>
+</div>
+<div class="flex flex-col sm:flex-row items-center sm:items-center gap-1.5 sm:gap-4 p-2 md:p-5 rounded-xl md:2xl bg-surface-container-low transition-all hover:shadow-md border border-transparent hover:border-outline-variant text-center sm:text-left">
+<div class="w-2.5 h-2.5 md:w-4 md:h-4 rounded-full bg-on-tertiary-fixed-variant flex-shrink-0" style="background-color: #7C4DFF;"></div>
+<div class="flex flex-col">
+<p class="text-[8px] md:text-xs text-on-surface-variant font-extrabold uppercase tracking-tight" style="">코인</p>
+<p class="text-[10px] sm:text-lg md:text-2xl font-black font-headline text-primary" style="">25.0%</p>
+</div>
+</div>
+<div class="flex flex-col sm:flex-row items-center sm:items-center gap-1.5 sm:gap-4 p-2 md:p-5 rounded-xl md:2xl bg-surface-container-low transition-all hover:shadow-md border border-transparent hover:border-outline-variant text-center sm:text-left">
+<div class="w-2.5 h-2.5 md:w-4 md:h-4 rounded-full bg-secondary-container border border-outline-variant flex-shrink-0" style="background-color: #90A4AE;"></div>
+<div class="flex flex-col">
+<p class="text-[8px] md:text-xs text-on-surface-variant font-extrabold uppercase tracking-tight" style="">채권</p>
+<p class="text-[10px] sm:text-lg md:text-2xl font-black font-headline text-primary" style="">15.0%</p>
+</div>
+</div>
+<div class="flex flex-col sm:flex-row items-center sm:items-center gap-1.5 sm:gap-4 p-2 md:p-5 rounded-xl md:2xl bg-surface-container-low transition-all hover:shadow-md border border-transparent hover:border-outline-variant text-center sm:text-left">
+<div class="w-2.5 h-2.5 md:w-4 md:h-4 rounded-full bg-slate-200 flex-shrink-0" style="background-color: #FFB300;"></div>
+<div class="flex flex-col">
+<p class="text-[8px] md:text-xs text-on-surface-variant font-extrabold uppercase tracking-tight" style="">금</p>
+<p class="text-[10px] sm:text-lg md:text-2xl font-black font-headline text-primary" style="">15.0%</p>
+</div>
+</div>
+</div>
+</div>
+<div class="flex flex-col items-center">
+<div class="donut-chart">
+<div class="chart-inner-text">
+<p class="text-[8px] md:text-[10px] font-bold text-on-surface-variant tracking-widest" style="">남은 투자 기간</p>
+<p class="text-xl md:text-3xl font-black text-primary font-headline" style="">D-452</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Daily Report Summary Card -->
+<section class="bg-[#1A237E] rounded-xl p-6 flex flex-col md:flex-row justify-between items-center gap-4 shadow-xl">
+<div class="flex-1">
+<h3 class="text-xs font-bold font-headline mb-1 uppercase tracking-wider text-blue-200" style="">일일 리포트 요약</h3>
+<p class="text-sm font-medium leading-relaxed text-white font-bold text-lg" style="">
+            현재 포트폴리오는 안정적이며, 기술주 비중이 소폭 상승했습니다. 시장의 변동성에 대응하여 분산 투자가 필요한 시점입니다.
+        </p>
+</div>
+<button class="flex items-center gap-2 px-5 py-2.5 bg-white text-[#1A237E] rounded-lg text-sm font-bold hover:bg-blue-50 transition-colors whitespace-nowrap shadow-md" style="">
+        상세 리포트 보기
+        <span class="material-symbols-outlined text-sm" data-icon="arrow_forward" style="">arrow_forward</span>
+</button>
+</section>
+<!-- Market Indices Bento Grid -->
+<section class="space-y-4">
+<div class="flex justify-between items-end">
+<h2 class="text-xl font-extrabold text-primary font-headline" style="">실시간 시장 지수</h2>
+<span class="text-xs text-on-surface-variant font-medium" style="">업데이트: 5분 전</span>
+</div>
+<div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+<!-- KOSPI -->
+<div class="bg-surface-container-low p-5 rounded-xl transition-all hover:bg-surface-container-lowest cursor-default">
+<p class="text-xs font-bold text-on-surface-variant mb-1" style="">KOSPI</p>
+<div class="flex items-baseline gap-2">
+<span class="text-xl font-black font-headline" style="">2,682.41</span>
+<span class="text-[10px] font-bold text-error flex items-center" style="">
+<span class="material-symbols-outlined text-xs" data-icon="arrow_drop_up" style="font-variation-settings: &quot;FILL&quot; 1;">arrow_drop_up</span>
+                            0.45%
+                        </span>
+</div>
+</div>
+<!-- KOSDAQ -->
+<div class="bg-surface-container-low p-5 rounded-xl transition-all hover:bg-surface-container-lowest cursor-default">
+<p class="text-xs font-bold text-on-surface-variant mb-1" style="">KOSDAQ</p>
+<div class="flex items-baseline gap-2">
+<span class="text-xl font-black font-headline" style="">873.12</span>
+<span class="text-[10px] font-bold text-secondary flex items-center" style="">
+<span class="material-symbols-outlined text-xs" data-icon="arrow_drop_down" style="font-variation-settings: &quot;FILL&quot; 1;">arrow_drop_down</span>
+                            0.12%
+                        </span>
+</div>
+</div>
+<!-- S&P 500 -->
+<div class="bg-surface-container-low p-5 rounded-xl transition-all hover:bg-surface-container-lowest cursor-default">
+<p class="text-xs font-bold text-on-surface-variant mb-1" style="">S&amp;P 500</p>
+<div class="flex items-baseline gap-2">
+<span class="text-xl font-black font-headline" style="">5,117.08</span>
+<span class="text-[10px] font-bold text-error flex items-center" style="">
+<span class="material-symbols-outlined text-xs" data-icon="arrow_drop_up" style="font-variation-settings: &quot;FILL&quot; 1;">arrow_drop_up</span>
+                            1.12%
+                        </span>
+</div>
+</div>
+<!-- NASDAQ -->
+<div class="bg-surface-container-low p-5 rounded-xl transition-all hover:bg-surface-container-lowest cursor-default">
+<p class="text-xs font-bold text-on-surface-variant mb-1" style="">NASDAQ</p>
+<div class="flex items-baseline gap-2">
+<span class="text-xl font-black font-headline" style="">16,085.11</span>
+<span class="text-[10px] font-bold text-error flex items-center" style="">
+<span class="material-symbols-outlined text-xs" data-icon="arrow_drop_up" style="font-variation-settings: &quot;FILL&quot; 1;">arrow_drop_up</span>
+                            1.54%
+                        </span>
+</div>
+</div>
+<!-- Bitcoin -->
+<div class="bg-surface-container-low p-5 rounded-xl transition-all hover:bg-surface-container-lowest cursor-default">
+<div class="flex justify-between mb-1">
+<p class="text-xs font-bold text-on-surface-variant" style="">비트코인</p>
+<span class="px-2 py-0.5 rounded bg-tertiary text-white text-[8px] font-bold" style="">CRYPTO</span>
+</div>
+<div class="flex items-baseline gap-2">
+<span class="text-xl font-black font-headline" style="">96.4M</span>
+<span class="text-[10px] font-bold text-error flex items-center" style="">
+<span class="material-symbols-outlined text-xs" data-icon="arrow_drop_up" style="font-variation-settings: &quot;FILL&quot; 1;">arrow_drop_up</span>
+                            2.3%
+                        </span>
+</div>
+</div>
+<!-- Exchange Rate -->
+<div class="bg-surface-container-low p-5 rounded-xl transition-all hover:bg-surface-container-lowest cursor-default">
+<p class="text-xs font-bold text-on-surface-variant mb-1" style="">환율 (USD/KRW)</p>
+<div class="flex items-baseline gap-2">
+<span class="text-xl font-black font-headline" style="">1,334.50</span>
+<span class="text-[10px] font-bold text-secondary flex items-center" style="">
+<span class="material-symbols-outlined text-xs" data-icon="arrow_drop_down" style="font-variation-settings: &quot;FILL&quot; 1;">arrow_drop_down</span>
+                            0.05%
+                        </span>
+</div>
+</div>
+</div>
+</section>
+</div>
+</main>
+<!-- Mobile Navigation Bar -->
+<nav class="md:hidden fixed bottom-0 left-0 right-0 bg-surface-container-lowest flex justify-around items-center p-4 border-t border-surface-container-low z-50">
+<a class="flex flex-col items-center gap-1 text-primary" href="#" style="">
+<span class="material-symbols-outlined" data-icon="dashboard" style="font-variation-settings: &quot;FILL&quot; 1;">dashboard</span>
+<span class="text-[10px] font-bold" style="">홈</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-on-surface-variant" href="#" style="">
+<span class="material-symbols-outlined" data-icon="edit_note" style="">edit_note</span>
+<span class="text-[10px] font-medium" style="">기록</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-on-surface-variant" href="#" style="">
+<span class="material-symbols-outlined" data-icon="quiz" style="">quiz</span>
+<span class="text-[10px] font-medium" style="">퀴즈</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-on-surface-variant" href="#" style="">
+<span class="material-symbols-outlined" data-icon="newspaper" style="">newspaper</span>
+<span class="text-[10px] font-medium" style="">뉴스</span>
+</a>
+</nav>
+</body></html>
