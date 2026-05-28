@@ -80,6 +80,52 @@ def get_scenarios(db: Session = Depends(get_db)):
     }
 
 
+@router.get("/api/game/my-cleared-scenarios")
+def get_my_cleared_scenarios(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """본인이 클리어(finalize)한 시나리오 리스트.
+
+    `finalized_at`은 마지막 GameAllocation의 created_at으로 추정 (Day 7 매매 확정 시점).
+    프론트에서 시나리오 잠금 해제 시점 계산에 사용.
+    """
+    participations = (
+        db.query(models.GameParticipation)
+        .filter(
+            models.GameParticipation.user_id == current_user.id,
+            models.GameParticipation.is_finalized == True,  # noqa: E712
+        )
+        .all()
+    )
+
+    result = []
+    for p in participations:
+        last_alloc = (
+            db.query(models.GameAllocation)
+            .filter(models.GameAllocation.participation_id == p.id)
+            .order_by(models.GameAllocation.day_index.desc())
+            .first()
+        )
+        finalized_at = last_alloc.created_at if last_alloc else p.created_at
+
+        # 점수·랭킹 (없으면 None — 정산 전인 케이스 대비)
+        game_result = crud.get_game_result(db, p.id)
+        rank_info = crud.get_rank_for_participation(db, p.id) if game_result else None
+
+        result.append({
+            "scenario_id":        p.scenario_id,
+            "participation_id":   p.id,
+            "finalized_at":       finalized_at.isoformat() if finalized_at else None,
+            "total_score":        game_result.total_score if game_result else None,
+            "final_return":       game_result.final_return if game_result else None,
+            "rank":               rank_info["rank"] if rank_info else None,
+            "total_participants": rank_info["total"] if rank_info else None,
+        })
+
+    return {"success": True, "data": result}
+
+
 @router.post("/api/game/start")
 def start_game(
     req: schemas.GameStartRequest,

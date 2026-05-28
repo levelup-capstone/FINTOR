@@ -135,6 +135,20 @@ export async function fetchScenarios(): Promise<ScenarioInfo[]> {
   return (await apiCall<ScenarioInfo[]>(`/api/game/scenarios`, {}, [])) ?? [];
 }
 
+export type ClearedScenario = {
+  scenario_id: number;
+  participation_id: number;
+  finalized_at: string | null;
+  total_score: number | null;
+  final_return: number | null;
+  rank: number | null;
+  total_participants: number | null;
+};
+
+export async function fetchMyClearedScenarios(): Promise<ClearedScenario[]> {
+  return (await apiCall<ClearedScenario[]>('/api/game/my-cleared-scenarios', {}, [])) ?? [];
+}
+
 export type GameScore = {
   participation_id: number;
   final_return: number | null;

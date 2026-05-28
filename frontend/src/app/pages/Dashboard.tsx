@@ -7,6 +7,49 @@ import { LevelUpModal, type LevelUpPayload } from "../components/LevelUpModal";
 const MAX_EXP = 100;
 const SIMULATOR_TOTAL_DAYS = 7;
 
+// 시장 지수 카드 클릭 시 이동할 네이버 증권 상세 페이지 URL 매핑
+const INDEX_NAVER_URL: Record<string, string> = {
+  // 국내 지수
+  KOSPI:       'https://finance.naver.com/sise/sise_index.naver?code=KOSPI',
+  KOSDAQ:      'https://finance.naver.com/sise/sise_index.naver?code=KOSDAQ',
+  VKOSPI:      'https://finance.naver.com/sise/sise_index.naver?code=VKOSPI',
+  KRX200IT:    'https://finance.naver.com/sise/sise_index.naver?code=KPI200',
+  KRXHEALTH:   'https://finance.naver.com/sise/sise_index.naver?code=KRXHEALTH',
+  BBIG:        'https://finance.naver.com/sise/sise_index.naver?code=KRX300',
+
+  // 해외 지수 (모바일 stock 페이지가 안정적)
+  SP500:       'https://m.stock.naver.com/worldstock/index/.INX/total',
+  NASDAQ100:   'https://m.stock.naver.com/worldstock/index/.NDX/total',
+  DOW30:       'https://m.stock.naver.com/worldstock/index/.DJI/total',
+  SOX:         'https://m.stock.naver.com/worldstock/index/.SOX/total',
+  NBI:         'https://m.stock.naver.com/worldstock/index/.NBI/total',
+  FANGPLUS:    'https://m.stock.naver.com/worldstock/index/.NYFANG/total',
+  VIX:         'https://m.stock.naver.com/worldstock/index/.VIX/total',
+  US10Y:       'https://m.stock.naver.com/worldstock/index/.US10YT/total',
+  NIKKEI225:   'https://m.stock.naver.com/worldstock/index/.N225/total',
+  HANSENG:     'https://m.stock.naver.com/worldstock/index/.HSI/total',
+  SSE:         'https://m.stock.naver.com/worldstock/index/.SSEC/total',
+  EUROSTOXX50: 'https://m.stock.naver.com/worldstock/index/.SX5E/total',
+
+  // 환율
+  USD_KRW: 'https://finance.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW',
+  JPY_KRW: 'https://finance.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_JPYKRW',
+  EUR_KRW: 'https://finance.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_EURKRW',
+  DXY:     'https://finance.naver.com/marketindex/?tabSel=dollar',
+  USD_JPY: 'https://finance.naver.com/marketindex/worldExchangeDetail.naver?marketindexCd=FX_USDJPY',
+  EUR_USD: 'https://finance.naver.com/marketindex/worldExchangeDetail.naver?marketindexCd=FX_EURUSD',
+
+  // 원자재
+  WTI:    'https://finance.naver.com/marketindex/worldOilDetail.naver?marketindexCd=OIL_CL&fdtc=2',
+  GOLD:   'https://finance.naver.com/marketindex/worldGoldDetail.naver?marketindexCd=CMDT_GC&fdtc=2',
+  SILVER: 'https://finance.naver.com/marketindex/worldGoldDetail.naver?marketindexCd=CMDT_SI&fdtc=2',
+  COPPER: 'https://finance.naver.com/marketindex/',
+  NATGAS: 'https://finance.naver.com/marketindex/?tabSel=.gas',
+
+  // 암호화폐 (네이버 모바일 가상자산)
+  BTC_KRW: 'https://m.stock.naver.com/crypto/UPBIT/BTC/total',
+};
+
 type DailyResult = {
   correctCount: number;
   total: number;
@@ -772,11 +815,10 @@ export function Dashboard() {
             (CATEGORIES.find((c) => c.key === activeTab)?.keys ?? []).map((key) => {
               const item = marketData?.[key];
               const isUp = item ? item.change_rate >= 0 : true;
-              return (
-                <div
-                  key={key}
-                  className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-5 rounded-xl shadow-sm transition-all hover:shadow-md hover:border-slate-300 cursor-default"
-                >
+              const url = INDEX_NAVER_URL[key];
+              const cardClass = "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-5 rounded-xl shadow-sm transition-all hover:shadow-md hover:border-slate-300";
+              const content = (
+                <>
                   <p className="text-xs font-bold text-on-surface-variant mb-1">{INDEX_LABEL[key] ?? key}</p>
                   <div className="flex items-baseline gap-2 flex-wrap">
                     <span className="text-xl font-black font-headline">
@@ -797,6 +839,26 @@ export function Dashboard() {
                       </div>
                     )}
                   </div>
+                </>
+              );
+
+              if (url) {
+                return (
+                  <a
+                    key={key}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={`${INDEX_LABEL[key] ?? key} 네이버 증권 상세 보기 (새 창)`}
+                    className={`${cardClass} cursor-pointer block`}
+                  >
+                    {content}
+                  </a>
+                );
+              }
+              return (
+                <div key={key} className={`${cardClass} cursor-default`}>
+                  {content}
                 </div>
               );
             })

@@ -1,10 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { fetchParticipation, fetchGameScore, fetchGameReview, devResetParticipation, INITIAL_CASH, type ParticipationData, type GameScore, type GameReview } from './simulatorApi';
 import { LevelUpModal, type LevelUpPayload } from '../components/LevelUpModal';
 
 export function SimulatorResult() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [pData, setPData] = useState<ParticipationData | null>(null);
   const [scoreData, setScoreData] = useState<GameScore | null>(null);
   const [reviewData, setReviewData] = useState<GameReview | null>(null);
@@ -15,7 +16,9 @@ export function SimulatorResult() {
   const [levelUpPayload, setLevelUpPayload] = useState<LevelUpPayload | null>(null);
 
   useEffect(() => {
-    const pid = localStorage.getItem('participationId');
+    // URL ?pid= (다른 클리어한 시즌 결과 조회) → 없으면 localStorage의 활성 participationId 사용
+    const pidParam = searchParams.get('pid');
+    const pid = pidParam ?? localStorage.getItem('participationId');
     if (!pid) { setLoading(false); return; }
     fetchParticipation(Number(pid)).then(async (d) => {
       setPData(d);
