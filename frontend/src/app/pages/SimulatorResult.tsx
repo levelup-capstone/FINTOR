@@ -266,9 +266,9 @@ export function SimulatorResult() {
           <div className="bg-[#1A237E]/5 border-2 border-[#1A237E]/30 rounded-2xl p-6 flex flex-col justify-center gap-3">
             <div className="flex items-center gap-2 text-[#1A237E]">
               <span className="material-symbols-outlined" style={{ fontVariationSettings: '"FILL" 1' }}>lightbulb</span>
-              <span className="text-xs font-bold uppercase tracking-widest">Key Lesson</span>
+              <span className="text-xl font-bold uppercase tracking-widest">Key Lesson</span>
             </div>
-            <p className="text-xl md:text-2xl font-black tracking-tight text-on-surface leading-tight whitespace-pre-line">
+            <p className="text-lg md:text-xl font-black tracking-tight text-on-surface leading-snug whitespace-pre-line">
               {scenario.key_lesson ?? '데이터가 존재하지 않습니다.'}
             </p>
           </div>
@@ -296,7 +296,7 @@ export function SimulatorResult() {
                 <div className="h-3 bg-surface-container rounded-full animate-pulse w-4/6" />
               </div>
             ) : (
-              <p className="text-sm font-medium text-on-surface-variant leading-relaxed">
+              <p className="text-base font-medium text-on-surface-variant leading-relaxed">
                 {reviewData?.overall_review ?? ''}
               </p>
             )}
@@ -377,7 +377,7 @@ function RetroCard({ icon, title, tone, loading, children }: { icon: string; tit
           <div className="h-3 bg-surface-container rounded-full animate-pulse w-3/4" />
         </div>
       ) : (
-        <p className="text-sm font-medium text-on-surface-variant leading-relaxed whitespace-pre-line">{children}</p>
+        <p className="text-base font-medium text-on-surface-variant leading-relaxed whitespace-pre-line">{children}</p>
       )}
     </div>
   );
