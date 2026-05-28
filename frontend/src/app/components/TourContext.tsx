@@ -27,14 +27,35 @@ export function TourProvider({ children }: { children: ReactNode }) {
   // -1: 비활성, 0~N-1: 진행 중
   const [currentIndex, setCurrentIndex] = useState<number>(-1);
 
-  // 첫 로그인(또는 첫 dashboard 진입) 시 자동 시작
+  // 신규 계정(level=1, exp=0) + 같은 브라우저에서 아직 안 본 경우에만 자동 시작
   useEffect(() => {
     if (currentIndex !== -1) return;
-    if (localStorage.getItem(TOUR_SEEN_KEY)) return;
+    if (localStorage.getItem(TOUR_SEEN_KEY)) return;        // 이 브라우저에서 이미 봄/건너뜀
     if (location.pathname !== '/dashboard') return;
-    // 렌더가 어느정도 끝난 후 시작
-    const id = setTimeout(() => setCurrentIndex(0), 600);
-    return () => clearTimeout(id);
+
+    let userId: number | undefined;
+    try {
+      userId = JSON.parse(localStorage.getItem('loginResult') || 'null')?.data?.userId;
+    } catch { /* ignore */ }
+    if (!userId) return;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    fetch(`/api/v1/users/${userId}/level`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (cancelled) return;
+        // 계정 기준 신규 판단: 레벨 1 + 경험치 0 (한 번도 활동 안 한 계정)
+        if (json.success && json.data.level === 1 && json.data.exp === 0) {
+          timer = setTimeout(() => setCurrentIndex(0), 600);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, [location.pathname, currentIndex]);
 
   // currentIndex 변경 시 해당 step.path와 현재 pathname이 다르면 자동 이동

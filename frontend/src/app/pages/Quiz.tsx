@@ -501,6 +501,8 @@ function SeasonChallengeCard({
         </div>
       </div>
 
+      <SeasonGuide />
+
       <div className="flex flex-col sm:flex-row gap-3">
         <button
           onClick={onStart}
@@ -517,6 +519,66 @@ function SeasonChallengeCard({
           랭킹 보기
         </button>
       </div>
+    </div>
+  );
+}
+
+// ─── 시즌 챌린지 안내 (클릭 시 펼침) ───────────────────────────────────────────
+function SeasonGuide() {
+  const [open, setOpen] = useState(false);
+  const tiers = [
+    { range: '상위 10%', exp: 200 },
+    { range: '10 ~ 30%', exp: 120 },
+    { range: '30 ~ 50%', exp: 70 },
+    { range: '50 ~ 70%', exp: 40 },
+    { range: '70% ~ (참여)', exp: 20 },
+  ];
+  return (
+    <div className="bg-surface-container-lowest border border-outline-variant/50 rounded-xl overflow-hidden mb-6">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="w-full flex items-center gap-2 p-4 text-left hover:bg-surface-container-low transition-colors"
+      >
+        <span className="material-symbols-outlined text-[#1A237E]" style={{ fontVariationSettings: '"FILL" 1' }}>
+          info
+        </span>
+        <h3 className="text-sm md:text-base font-extrabold text-[#1A237E] flex-1">시즌 챌린지 안내</h3>
+        <span className={`material-symbols-outlined text-on-surface-variant transition-transform ${open ? 'rotate-180' : ''}`}>
+          expand_more
+        </span>
+      </button>
+      {open && (
+        <div className="px-5 pb-5 pt-1 flex flex-col gap-4 text-sm text-on-surface">
+          {/* 시즌 기간 */}
+          <div className="flex items-start gap-2">
+            <span className="material-symbols-outlined text-[18px] text-on-surface-variant mt-0.5">calendar_month</span>
+            <span>한 시즌은 <b>2주</b> 진행됩니다. <b>월요일 00:00</b>에 시작해 <b>2주 뒤 일요일 23:59</b>에 종료돼요.</span>
+          </div>
+          {/* 경험치 지급 방식 */}
+          <div className="flex items-start gap-2">
+            <span className="material-symbols-outlined text-[18px] text-on-surface-variant mt-0.5">workspace_premium</span>
+            <div>
+              <span>시즌 종료 시 <b>최종 랭킹 백분위</b>에 따라 경험치가 <b>자동 지급</b>됩니다.</span>
+              <div className="mt-2 rounded-lg border border-outline-variant/40 overflow-hidden">
+                {tiers.map((t, i) => (
+                  <div
+                    key={t.range}
+                    className={`flex items-center justify-between px-3 py-1.5 ${i % 2 === 0 ? 'bg-surface-container-low' : ''}`}
+                  >
+                    <span className="text-on-surface-variant font-semibold">{t.range}</span>
+                    <span className="font-black text-[#1A237E] tabular-nums">+{t.exp} EXP</span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-on-surface-variant mt-1.5">
+                무한 퀴즈 최고 연속 정답 기록이 시즌 점수가 됩니다.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
