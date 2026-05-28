@@ -205,6 +205,7 @@ export function Quiz() {
             setSelectedOpt(null);
             setRevealed(false);
             setSessionResults([]);
+            setCachedQuestions([]);
           }}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border-2 border-dashed border-red-400 text-red-500 font-bold text-xs hover:bg-red-50 transition-colors"
           title="[DEV] 일일 퀴즈 초기화"
