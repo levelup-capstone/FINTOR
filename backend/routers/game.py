@@ -151,23 +151,6 @@ def start_game(
     }
 
 
-# TODO: 배포 전 이 엔드포인트 제거
-@router.post("/api/game/dev/reset-all")
-def dev_reset_all_participations(
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
-):
-    all_participations = db.query(models.GameParticipation).filter(
-        models.GameParticipation.user_id == current_user.id
-    ).all()
-    deleted_count = len(all_participations)
-    for p in all_participations:
-        db.delete(p)
-    db.commit()
-    return {"success": True, "data": {"deleted_count": deleted_count}}
-
-
-
 # ── 게임 현황 조회 ─────────────────────────────────────────────────────────────
 @router.get("/api/game/participation/{participation_id}")
 def get_participation(

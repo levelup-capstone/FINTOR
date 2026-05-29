@@ -16,14 +16,26 @@ def get_user_by_id(db: Session, user_id: int):
 
 def create_user(db: Session, kakao_id: str, nickname: str, profile_image: str):
     db_user = models.User(
-        kakao_id=kakao_id, 
-        nickname=nickname, 
+        kakao_id=kakao_id,
+        nickname=nickname,
         profile_image=profile_image
     )
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
     return db_user
+
+def update_tour_done(db: Session, user_id: int, dashboard: Optional[bool] = None, simulator: Optional[bool] = None):
+    user = get_user_by_id(db, user_id)
+    if not user:
+        return None
+    if dashboard is not None:
+        user.dashboard_tour_done = dashboard
+    if simulator is not None:
+        user.simulator_tour_done = simulator
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 
@@ -616,29 +628,6 @@ def get_or_create_current_season(db: Session) -> models.QuizSeason:
         db.refresh(season)
         print(f"🏆 퀴즈 시즌 1 생성: {start_at.strftime('%Y-%m-%d')} ~ {end_at.strftime('%Y-%m-%d')} (KST)")
     return season
-
-
-# TODO: 배포 전 제거 — DEV 전용: 현재 시즌을 즉시 종료하여 distribute_season_exp 트리거
-def dev_force_end_season(db: Session) -> dict:
-    """현재 진행 중인 시즌의 end_at을 과거로 당겨 즉시 종료 처리."""
-    season = get_current_season(db)
-    if season is None:
-        return {"error": "진행 중인 시즌이 없습니다."}
-    if season.exp_distributed:
-        return {"error": f"시즌 {season.season}은 이미 종료 처리되었습니다."}
-
-    # end_at을 1초 전으로 설정 → distribute_season_exp가 종료 시즌으로 인식
-    season.end_at = datetime.now(timezone.utc) - timedelta(seconds=1)
-    db.commit()
-
-    distributed = distribute_season_exp(db)
-    new_season = get_current_season(db)
-    return {
-        "ended_season":  season.season,
-        "distributed":   distributed,
-        "next_season":   new_season.season if new_season else None,
-        "next_end_at":   new_season.end_at.isoformat() if new_season else None,
-    }
 
 
 def distribute_season_exp(db: Session) -> int:
