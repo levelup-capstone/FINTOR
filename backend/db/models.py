@@ -71,7 +71,7 @@ class News(Base):
     tag         = Column(String, nullable=False, default="기타")
     reason      = Column(String, nullable=False, default="OpenAI 연동 대기중")
     link        = Column(String, unique=True, index=True, nullable=False)
-    pub_date    = Column(String, nullable=False)
+    pub_date    = Column(DateTime(timezone=True), nullable=False)
     created_at  = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
