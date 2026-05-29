@@ -205,7 +205,7 @@ def run_news_pipeline():
                     "sentiment":   ai_result.get("sentiment", "중립"),
                     "tag":         ai_result.get("tag", "기타"),
                     "reason":      ai_result.get("reason", "분석 실패"),
-                    "pub_date":    pub_date_str,
+                    "pub_date":    pub_date,
                     "created_at":  now_utc,
                 }
 

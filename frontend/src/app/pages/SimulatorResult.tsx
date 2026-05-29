@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
-import { fetchParticipation, fetchGameScore, fetchGameReview, devResetParticipation, INITIAL_CASH, type ParticipationData, type GameScore, type GameReview } from './simulatorApi';
+import { fetchParticipation, fetchGameScore, fetchGameReview, INITIAL_CASH, type ParticipationData, type GameScore, type GameReview } from './simulatorApi';
 import { LevelUpModal, type LevelUpPayload } from '../components/LevelUpModal';
 
 export function SimulatorResult() {
@@ -266,9 +266,9 @@ export function SimulatorResult() {
           <div className="bg-[#1A237E]/5 border-2 border-[#1A237E]/30 rounded-2xl p-6 flex flex-col justify-center gap-3">
             <div className="flex items-center gap-2 text-[#1A237E]">
               <span className="material-symbols-outlined" style={{ fontVariationSettings: '"FILL" 1' }}>lightbulb</span>
-              <span className="text-xs font-bold uppercase tracking-widest">Key Lesson</span>
+              <span className="text-xl font-bold uppercase tracking-widest">Key Lesson</span>
             </div>
-            <p className="text-xl md:text-2xl font-black tracking-tight text-on-surface leading-tight whitespace-pre-line">
+            <p className="text-lg md:text-xl font-black tracking-tight text-on-surface leading-snug whitespace-pre-line">
               {scenario.key_lesson ?? '데이터가 존재하지 않습니다.'}
             </p>
           </div>
@@ -296,7 +296,7 @@ export function SimulatorResult() {
                 <div className="h-3 bg-surface-container rounded-full animate-pulse w-4/6" />
               </div>
             ) : (
-              <p className="text-sm font-medium text-on-surface-variant leading-relaxed">
+              <p className="text-base font-medium text-on-surface-variant leading-relaxed">
                 {reviewData?.overall_review ?? ''}
               </p>
             )}
@@ -306,22 +306,6 @@ export function SimulatorResult() {
 
       {/* 6. Actions */}
       <section className="flex flex-col sm:flex-row justify-end items-center gap-4 pt-4 border-t border-outline-variant/30">
-        {/* [DEV ONLY] 시나리오 진행 초기화 버튼 - 테스트 전용, 배포 전 제거 필요 */}
-        <button
-          onClick={async () => {
-            if (!confirm('[DEV] 모든 회차 진행을 초기화하시겠습니까?\nDB에 기록된 모든 배분 내역이 삭제됩니다.')) return;
-            const result = await devResetParticipation(); // DEV ONLY
-            if (result) {
-              localStorage.removeItem('participationId');
-              navigate('/dashboard/simulator');
-            }
-          }}
-          className="w-full sm:w-auto px-6 py-3 rounded-xl border-2 border-dashed border-red-400 text-red-500 font-bold text-sm hover:bg-red-50 transition-colors flex items-center justify-center gap-2"
-          title="[DEV] 시나리오 초기화"
-        >
-          <span className="material-symbols-outlined text-[20px]">restart_alt</span>
-          [DEV] 초기화
-        </button>
         <button
           onClick={() => navigate('/dashboard/simulator/season/calendar')}
           className="w-full sm:w-auto px-6 py-3 rounded-xl bg-surface-container text-on-surface font-bold text-sm hover:bg-surface-container-high transition-colors flex items-center justify-center gap-2"
@@ -377,7 +361,7 @@ function RetroCard({ icon, title, tone, loading, children }: { icon: string; tit
           <div className="h-3 bg-surface-container rounded-full animate-pulse w-3/4" />
         </div>
       ) : (
-        <p className="text-sm font-medium text-on-surface-variant leading-relaxed whitespace-pre-line">{children}</p>
+        <p className="text-base font-medium text-on-surface-variant leading-relaxed whitespace-pre-line">{children}</p>
       )}
     </div>
   );

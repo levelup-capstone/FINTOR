@@ -80,8 +80,10 @@ def kakao_login(req: schemas.KakaoLoginRequest, db: Session = Depends(get_db)):
             "userId":         db_user.id,
             "nickname":       db_user.nickname,
             "profileImage":   db_user.profile_image,
-            "isNewUser":      is_new_user,
-            "redirectUrl":    redirect_url,
+            "isNewUser":         is_new_user,
+            "redirectUrl":       redirect_url,
+            "dashboardTourDone": db_user.dashboard_tour_done,
+            "simulatorTourDone": db_user.simulator_tour_done,
         },
     }
 

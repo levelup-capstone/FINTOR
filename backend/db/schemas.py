@@ -15,6 +15,8 @@ class LoginData(BaseModel):
     profileImage: Optional[str] = None
     isNewUser: bool
     redirectUrl: str
+    dashboardTourDone: bool
+    simulatorTourDone: bool
 
 class LoginResponse(BaseModel):
     success: bool

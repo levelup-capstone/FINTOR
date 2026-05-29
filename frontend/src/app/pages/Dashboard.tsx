@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
 import { fetchParticipation, fetchMyParticipation, type ParticipationData } from "./simulatorApi";
 import { fetchQuizStatus } from "./quizApi";
-import { LevelUpModal, type LevelUpPayload } from "../components/LevelUpModal";
 
 const MAX_EXP = 100;
 const SIMULATOR_TOTAL_DAYS = 7;
@@ -58,7 +57,6 @@ type DailyResult = {
   streak: number;
 };
 
-type DayStatus = 'completed' | 'partial' | 'missed' | 'today' | 'future';
 
 export function Dashboard() {
   const navigate = useNavigate();
@@ -80,32 +78,6 @@ export function Dashboard() {
   const [expGuideOpen, setExpGuideOpen] = useState(false);
   const expGuideRef = useRef<HTMLDivElement>(null);
 
-  // [DEV] 레벨업 모달 테스트
-  const [levelUpPayload, setLevelUpPayload] = useState<LevelUpPayload | null>(null);
-  const handleDevGrantExp = async () => {
-    const token = localStorage.getItem('accessToken');
-    const res = await fetch('/api/dev/grant-exp', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({ amount: 30 }),
-    });
-    const json = await res.json();
-    if (!json.success) return;
-    const d = json.data;
-    setLevel(d.level);
-    setExp(d.exp);
-    if (d.leveled_up) {
-      setLevelUpPayload({
-        newLevel:     d.level,
-        gainedLevels: d.gained_levels,
-        granted:      d.granted,
-        source:       '[DEV] 테스트 EXP',
-      });
-    }
-  };
   useEffect(() => {
     if (!expGuideOpen) return;
     const onClick = (e: MouseEvent) => {
@@ -253,19 +225,6 @@ export function Dashboard() {
   const todayValue = todayAlloc?.portfolio_value ?? null;
   const todayReturn = todayAlloc?.return_rate ?? null;
 
-  // 주간 학습 활동 (mock)
-  const weeklyActivity: { day: string; status: DayStatus }[] = [
-    { day: '월', status: 'completed' },
-    { day: '화', status: 'completed' },
-    { day: '수', status: 'completed' },
-    { day: '목', status: 'completed' },
-    { day: '금', status: 'completed' },
-    { day: '토', status: 'today' },
-    { day: '일', status: 'future' },
-  ];
-  const completedDays = weeklyActivity.filter((d) => d.status === 'completed').length;
-  const remainingDays = weeklyActivity.filter((d) => d.status === 'future' || d.status === 'today').length;
-
   // streak 다음 milestone 까지
   const nextMilestone = streak < 10 ? 10 : streak < 30 ? 30 : streak < 100 ? 100 : streak + 30;
   const milestoneRemaining = Math.max(0, nextMilestone - streak);
@@ -338,9 +297,6 @@ export function Dashboard() {
   ];
 
   const todayDone = !!dailyQuizResult;
-
-  // 최장 streak (mock; 추후 localStorage 또는 백엔드 연동)
-  const maxStreak = Math.max(streak, 12);
 
   return (
     <div className="flex-1 space-y-8 max-w-5xl mx-auto w-full">
@@ -448,16 +404,6 @@ export function Dashboard() {
               style={{ width: `${Math.min((exp / MAX_EXP) * 100, 100)}%` }}
             />
           </div>
-
-          {/* [DEV] 레벨업 모달 테스트 — 배포 전 제거 */}
-          <button
-            type="button"
-            onClick={handleDevGrantExp}
-            className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-lg text-[10px] md:text-xs font-bold text-amber-900 transition-colors"
-          >
-            <span className="material-symbols-outlined text-sm">science</span>
-            [DEV] +30 EXP (레벨업 이펙트 테스트)
-          </button>
         </div>
       </section>
 
@@ -865,12 +811,6 @@ export function Dashboard() {
           )}
         </div>
       </section>
-
-      <LevelUpModal
-        open={levelUpPayload !== null}
-        onClose={() => setLevelUpPayload(null)}
-        payload={levelUpPayload}
-      />
     </div>
   );
 }

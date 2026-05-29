@@ -72,6 +72,7 @@ function determineStates(
 
 export function SimulatorOverview() {
   const navigate = useNavigate();
+  const [guideOpen, setGuideOpen] = useState(false);
   const [scenarios, setScenarios] = useState<ScenarioInfo[]>([]);
   const [activeData, setActiveData] = useState<ParticipationData | null>(null);
   const [scoreData, setScoreData] = useState<GameScore | null>(null);
@@ -151,8 +152,38 @@ export function SimulatorOverview() {
   }
 
   return (
-    <div data-tour="simulator-overview" className="flex flex-col gap-4">
-      {states.map((state) => {
+    <div className="flex flex-col gap-4">
+      {/* 시뮬레이터 안내 (클릭 시 펼침) */}
+      <div className="bg-surface-container-low border border-outline-variant/40 rounded-2xl overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setGuideOpen((v) => !v)}
+          aria-expanded={guideOpen}
+          className="w-full flex items-center gap-2 p-4 text-left hover:bg-surface-container transition-colors"
+        >
+          <span className="material-symbols-outlined text-[#1A237E]" style={{ fontVariationSettings: '"FILL" 1' }}>
+            info
+          </span>
+          <h2 className="text-base md:text-lg font-extrabold text-[#1A237E] flex-1">시뮬레이터 이용 안내</h2>
+          <span className={`material-symbols-outlined text-on-surface-variant transition-transform ${guideOpen ? 'rotate-180' : ''}`}>
+            expand_more
+          </span>
+        </button>
+        {guideOpen && (
+          <ul className="flex flex-col gap-2 text-sm text-on-surface px-5 pb-5 pt-1">
+            <li className="flex items-start gap-2">
+              <span className="material-symbols-outlined text-[18px] text-on-surface-variant mt-0.5">lock_clock</span>
+              <span>모든 시나리오는 <b>하루에 하나씩</b> 열립니다. 이전 시나리오를 클리어해야 <b>다음 날 00시</b>에 다음 시나리오가 해금됩니다.</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="material-symbols-outlined text-[18px] text-on-surface-variant mt-0.5">workspace_premium</span>
+              <span>경험치는 <b>해당 시나리오 점수 ÷ 2</b>로 계산되며, 시나리오 <b>클리어 즉시</b> 경험치로 반영됩니다.</span>
+            </li>
+          </ul>
+        )}
+      </div>
+
+      {states.map((state, idx) => {
         const isActiveCard = state.scenario.id === activeData?.scenario.id;
         // cleared 카드는 my-cleared-scenarios에서 받은 점수 데이터 사용
         const inlineScore: GameScore | null = (() => {
@@ -177,6 +208,7 @@ export function SimulatorOverview() {
         return (
           <FeaturedCard
             key={state.scenario.id}
+            dataTour={idx === 0 ? 'simulator-overview' : undefined}
             state={state}
             activeData={isActiveCard ? activeData : null}
             scoreData={inlineScore}
@@ -197,7 +229,7 @@ export function SimulatorOverview() {
 
 // ─── 메인 카드 (기존 디자인 유지) ──────────────────────────────────────────
 function FeaturedCard({
-  state, activeData, scoreData, starting, onStart, onResume, onResult,
+  state, activeData, scoreData, starting, onStart, onResume, onResult, dataTour,
 }: {
   state: ScenarioState;
   activeData: ParticipationData | null;
@@ -206,6 +238,7 @@ function FeaturedCard({
   onStart: () => void;
   onResume: () => void;
   onResult: () => void;
+  dataTour?: string;
 }) {
   const { scenario, status, unlockAt } = state;
   const isLocked = status === 'locked';
@@ -249,6 +282,7 @@ function FeaturedCard({
 
   return (
     <button
+      data-tour={dataTour}
       onClick={onCardClick}
       disabled={isLocked || starting}
       aria-label={`시즌 #${scenario.stage} ${isLocked ? '잠금' : scenario.theme}`}

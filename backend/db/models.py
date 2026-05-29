@@ -14,6 +14,8 @@ class User(Base):
     kakao_id = Column(String, unique=True, index=True)
     nickname = Column(String)
     profile_image = Column(String, nullable=True)
+    dashboard_tour_done = Column(Boolean, default=False, nullable=False)
+    simulator_tour_done = Column(Boolean, default=False, nullable=False)
     survey = relationship("Survey", back_populates="owner", uselist=False, cascade="all, delete-orphan")
 
 
@@ -71,7 +73,7 @@ class News(Base):
     tag         = Column(String, nullable=False, default="기타")
     reason      = Column(String, nullable=False, default="OpenAI 연동 대기중")
     link        = Column(String, unique=True, index=True, nullable=False)
-    pub_date    = Column(String, nullable=False)
+    pub_date    = Column(DateTime(timezone=True), nullable=False)
     created_at  = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
