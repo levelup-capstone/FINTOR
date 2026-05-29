@@ -1,5 +1,7 @@
+from typing import Optional
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from db import models, schemas, crud
@@ -55,6 +57,38 @@ def submit_survey(
             "success": False,
             "message": "서버 내부 오류로 인해 데이터를 저장하지 못했습니다.",
         })
+
+
+class TourDoneRequest(BaseModel):
+    dashboardTourDone: Optional[bool] = None
+    simulatorTourDone: Optional[bool] = None
+
+@router.patch("/api/v1/users/{user_id}/tour")
+def update_tour_done(
+    user_id: int,
+    body: TourDoneRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    if current_user.id != user_id:
+        return JSONResponse(status_code=403, content={"success": False, "message": "권한이 없습니다."})
+
+    updated = crud.update_tour_done(
+        db,
+        user_id=user_id,
+        dashboard=body.dashboardTourDone,
+        simulator=body.simulatorTourDone,
+    )
+    if not updated:
+        return JSONResponse(status_code=404, content={"success": False, "message": "사용자를 찾을 수 없습니다."})
+
+    return {
+        "success": True,
+        "data": {
+            "dashboardTourDone": updated.dashboard_tour_done,
+            "simulatorTourDone": updated.simulator_tour_done,
+        },
+    }
 
 
 @router.get("/api/v1/users/{user_id}/level")

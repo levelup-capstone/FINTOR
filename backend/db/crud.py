@@ -16,14 +16,26 @@ def get_user_by_id(db: Session, user_id: int):
 
 def create_user(db: Session, kakao_id: str, nickname: str, profile_image: str):
     db_user = models.User(
-        kakao_id=kakao_id, 
-        nickname=nickname, 
+        kakao_id=kakao_id,
+        nickname=nickname,
         profile_image=profile_image
     )
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
     return db_user
+
+def update_tour_done(db: Session, user_id: int, dashboard: Optional[bool] = None, simulator: Optional[bool] = None):
+    user = get_user_by_id(db, user_id)
+    if not user:
+        return None
+    if dashboard is not None:
+        user.dashboard_tour_done = dashboard
+    if simulator is not None:
+        user.simulator_tour_done = simulator
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 

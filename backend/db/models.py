@@ -14,6 +14,8 @@ class User(Base):
     kakao_id = Column(String, unique=True, index=True)
     nickname = Column(String)
     profile_image = Column(String, nullable=True)
+    dashboard_tour_done = Column(Boolean, default=False, nullable=False)
+    simulator_tour_done = Column(Boolean, default=False, nullable=False)
     survey = relationship("Survey", back_populates="owner", uselist=False, cascade="all, delete-orphan")
 
 

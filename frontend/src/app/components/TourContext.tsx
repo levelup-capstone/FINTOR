@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router';
-import { TOUR_STEPS, TOUR_SEEN_KEY, type TourStep } from '../data/tourSteps';
+import { TOUR_STEPS, type TourStep } from '../data/tourSteps';
 
 type TourContextValue = {
   currentIndex: number;
@@ -20,6 +20,37 @@ export function useTour(): TourContextValue {
   return ctx;
 }
 
+// loginResult에서 userId와 dashboardTourDone을 읽는 헬퍼
+function getLoginResult(): { userId: number; dashboardTourDone: boolean } | null {
+  try {
+    const raw = localStorage.getItem('loginResult');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const data = parsed?.data;
+    if (!data?.userId) return null;
+    return { userId: data.userId, dashboardTourDone: !!data.dashboardTourDone };
+  } catch {
+    return null;
+  }
+}
+
+async function markDashboardTourDone(userId: number): Promise<void> {
+  const token = localStorage.getItem('accessToken');
+  await fetch(`/api/v1/users/${userId}/tour`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ dashboardTourDone: true }),
+  });
+  // loginResult 캐시도 갱신
+  try {
+    const raw = localStorage.getItem('loginResult');
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    parsed.data.dashboardTourDone = true;
+    localStorage.setItem('loginResult', JSON.stringify(parsed));
+  } catch { /* ignore */ }
+}
+
 export function TourProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -27,35 +58,17 @@ export function TourProvider({ children }: { children: ReactNode }) {
   // -1: 비활성, 0~N-1: 진행 중
   const [currentIndex, setCurrentIndex] = useState<number>(-1);
 
-  // 신규 계정(level=1, exp=0) + 같은 브라우저에서 아직 안 본 경우에만 자동 시작
+  // 대시보드 진입 시 DB 기반으로 투어 표시 여부 결정
   useEffect(() => {
     if (currentIndex !== -1) return;
-    if (localStorage.getItem(TOUR_SEEN_KEY)) return;        // 이 브라우저에서 이미 봄/건너뜀
     if (location.pathname !== '/dashboard') return;
 
-    let userId: number | undefined;
-    try {
-      userId = JSON.parse(localStorage.getItem('loginResult') || 'null')?.data?.userId;
-    } catch { /* ignore */ }
-    if (!userId) return;
+    const result = getLoginResult();
+    if (!result) return;
+    if (result.dashboardTourDone) return;
 
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    fetch(`/api/v1/users/${userId}/level`)
-      .then((r) => r.json())
-      .then((json) => {
-        if (cancelled) return;
-        // 계정 기준 신규 판단: 레벨 1 + 경험치 0 (한 번도 활동 안 한 계정)
-        if (json.success && json.data.level === 1 && json.data.exp === 0) {
-          timer = setTimeout(() => setCurrentIndex(0), 600);
-        }
-      })
-      .catch(() => {});
-
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-    };
+    const id = setTimeout(() => setCurrentIndex(0), 600);
+    return () => clearTimeout(id);
   }, [location.pathname, currentIndex]);
 
   // currentIndex 변경 시 해당 step.path와 현재 pathname이 다르면 자동 이동
@@ -68,7 +81,19 @@ export function TourProvider({ children }: { children: ReactNode }) {
   }, [currentIndex, location.pathname, navigate]);
 
   const finish = useCallback(() => {
-    localStorage.setItem(TOUR_SEEN_KEY, '1');
+    const result = getLoginResult();
+    if (result) {
+      // loginResult 캐시를 동기적으로 먼저 갱신 — setCurrentIndex(-1) 이후 effect 재실행 시 재시작 방지
+      try {
+        const raw = localStorage.getItem('loginResult');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          parsed.data.dashboardTourDone = true;
+          localStorage.setItem('loginResult', JSON.stringify(parsed));
+        }
+      } catch { /* ignore */ }
+      markDashboardTourDone(result.userId);
+    }
     setCurrentIndex(-1);
   }, []);
 
@@ -78,12 +103,12 @@ export function TourProvider({ children }: { children: ReactNode }) {
     setCurrentIndex((idx) => {
       if (idx < 0) return -1;
       if (idx + 1 >= TOUR_STEPS.length) {
-        localStorage.setItem(TOUR_SEEN_KEY, '1');
+        finish();
         return -1;
       }
       return idx + 1;
     });
-  }, []);
+  }, [finish]);
 
   const skip = useCallback(() => finish(), [finish]);
 
