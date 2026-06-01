@@ -163,6 +163,7 @@ export async function fetchGameScore(participationId: number): Promise<GameScore
 }
 
 export type GameReview = {
+  headline: string;
   good_judgment: string;
   bad_judgment: string;
   overall_review: string;

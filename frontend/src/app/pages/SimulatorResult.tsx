@@ -258,6 +258,23 @@ export function SimulatorResult() {
           <span className="material-symbols-outlined text-[#1A237E]">smart_toy</span>
           <h3 className="text-xl font-black tracking-tight text-on-surface">AI 회고 리포트</h3>
         </div>
+        {/* 한 줄 총평 (headline) */}
+        {reviewLoading ? (
+          <div className="flex items-center gap-3 bg-[#1A237E]/5 border border-[#1A237E]/20 rounded-2xl px-5 py-4">
+            <span className="material-symbols-outlined text-[#1A237E] flex-shrink-0 animate-spin">progress_activity</span>
+            <p className="text-sm md:text-base font-bold text-[#1A237E] leading-snug">
+              AI가 이번 시즌 투자 내역을 분석해 리포트를 작성하고 있어요.<br />
+              잠시만 기다려 주세요.
+            </p>
+          </div>
+        ) : reviewData?.headline ? (
+          <div className="flex items-center gap-3 bg-[#1A237E]/5 border border-[#1A237E]/20 rounded-2xl px-5 py-4">
+            <span className="material-symbols-outlined text-[#1A237E] flex-shrink-0" style={{ fontVariationSettings: '"FILL" 1' }}>format_quote</span>
+            <p className="text-lg md:text-xl font-black tracking-tight text-[#1A237E] leading-snug">
+              {reviewData.headline.replace(/^["'“”‘’]+|["'“”‘’]+$/g, '').trim()}
+            </p>
+          </div>
+        ) : null}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <RetroCard icon="monitoring" title="시나리오 해설" tone="primary">
             {scenario.recap_text ?? '데이터가 존재하지 않습니다.'}
