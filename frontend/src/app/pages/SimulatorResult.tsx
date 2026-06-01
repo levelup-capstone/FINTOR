@@ -258,23 +258,6 @@ export function SimulatorResult() {
           <span className="material-symbols-outlined text-[#1A237E]">smart_toy</span>
           <h3 className="text-xl font-black tracking-tight text-on-surface">AI 회고 리포트</h3>
         </div>
-        {/* 한 줄 총평 (headline) */}
-        {reviewLoading ? (
-          <div className="flex items-center gap-3 bg-[#1A237E]/5 border border-[#1A237E]/20 rounded-2xl px-5 py-4">
-            <span className="material-symbols-outlined text-[#1A237E] flex-shrink-0 animate-spin">progress_activity</span>
-            <p className="text-sm md:text-base font-bold text-[#1A237E] leading-snug">
-              AI가 이번 시즌 투자 내역을 분석해 리포트를 작성하고 있어요.<br />
-              잠시만 기다려 주세요.
-            </p>
-          </div>
-        ) : reviewData?.headline ? (
-          <div className="flex items-center gap-3 bg-[#1A237E]/5 border border-[#1A237E]/20 rounded-2xl px-5 py-4">
-            <span className="material-symbols-outlined text-[#1A237E] flex-shrink-0" style={{ fontVariationSettings: '"FILL" 1' }}>format_quote</span>
-            <p className="text-lg md:text-xl font-black tracking-tight text-[#1A237E] leading-snug">
-              {reviewData.headline.replace(/^["'“”‘’]+|["'“”‘’]+$/g, '').trim()}
-            </p>
-          </div>
-        ) : null}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <RetroCard icon="monitoring" title="시나리오 해설" tone="primary">
             {scenario.recap_text ?? '데이터가 존재하지 않습니다.'}
@@ -305,12 +288,10 @@ export function SimulatorResult() {
             <span className="material-symbols-outlined">psychology</span>
           </div>
           <div className="flex-1 min-w-0">
-            <h4 className="text-base font-bold text-on-surface mb-1">총평 및 다음 시즌 조언</h4>
+            <h4 className="text-base font-bold text-on-surface mb-1">총평</h4>
             {reviewLoading ? (
-              <div className="flex flex-col gap-2 mt-2">
-                <div className="h-3 bg-surface-container rounded-full animate-pulse w-full" />
-                <div className="h-3 bg-surface-container rounded-full animate-pulse w-5/6" />
-                <div className="h-3 bg-surface-container rounded-full animate-pulse w-4/6" />
+              <div className="mt-2">
+                <ReviewLoading />
               </div>
             ) : (
               <p className="text-base font-medium text-on-surface-variant leading-relaxed">
@@ -363,6 +344,16 @@ function ScoreBar({ label, score, max }: { label: string; score: number; max: nu
   );
 }
 
+// AI 리뷰 생성 대기 중 각 섹터에 표시할 안내 문구 (회전 아이콘 + 텍스트)
+function ReviewLoading() {
+  return (
+    <div className="flex items-center gap-2 text-[#1A237E]">
+      <span className="material-symbols-outlined flex-shrink-0 animate-spin">progress_activity</span>
+      <p className="text-sm font-bold leading-snug">AI가 이번 시즌 투자 내역을 분석하고 있어요.</p>
+    </div>
+  );
+}
+
 function RetroCard({ icon, title, tone, loading, children }: { icon: string; title: string; tone: 'primary' | 'error'; loading?: boolean; children: ReactNode }) {
   const toneCls = tone === 'error' ? 'text-red-700' : 'text-[#1A237E]';
   return (
@@ -372,11 +363,7 @@ function RetroCard({ icon, title, tone, loading, children }: { icon: string; tit
         <span className="text-base font-bold">{title}</span>
       </div>
       {loading ? (
-        <div className="flex flex-col gap-2">
-          <div className="h-3 bg-surface-container rounded-full animate-pulse w-full" />
-          <div className="h-3 bg-surface-container rounded-full animate-pulse w-5/6" />
-          <div className="h-3 bg-surface-container rounded-full animate-pulse w-3/4" />
-        </div>
+        <ReviewLoading />
       ) : (
         <p className="text-base font-medium text-on-surface-variant leading-relaxed whitespace-pre-line">{children}</p>
       )}

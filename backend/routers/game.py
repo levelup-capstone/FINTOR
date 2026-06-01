@@ -15,7 +15,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 router = APIRouter()
 
-# 개선8: 리뷰 프롬프트에 넣는 자산 코드를 한글로 치환하기 위한 사전.
+# 리뷰 프롬프트에 넣는 자산 코드를 한글로 치환하기 위한 사전.
 # 프론트 SimulatorDashboard.tsx의 ASSET_META와 동기화 상태를 유지해야 한다
 # (한쪽에만 자산이 추가되면 화면/리뷰의 자산명이 어긋남).
 # 추후에 시나리오가 완성되면 프론트와 함께 변경 예정
@@ -81,7 +81,8 @@ def get_my_participation(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    p = crud.get_active_participation(db, current_user.id)
+    # 완료된 시즌도 포함해 최신 참여를 반환 (로그아웃 등으로 localStorage가 비어도 DB 기준 상태 복원)
+    p = crud.get_latest_participation(db, current_user.id)
     if not p:
         return {"success": True, "data": None}
     return {"success": True, "data": {"participation_id": p.id, "scenario_id": p.scenario_id}}
@@ -426,7 +427,7 @@ def get_game_review(
     alloc_rows = crud.get_allocations_by_participation(db, participation_id)
     result     = crud.get_game_result(db, participation_id)
 
-    # 개선8: 투자 비중의 자산 코드를 한글 라벨로 치환(사용자가 화면에서 보는 표기와 일치)
+    # 투자 비중의 자산 코드를 한글 라벨로 치환(사용자가 화면에서 보는 표기와 일치)
     alloc_summary = [
         {
             "day":         a.day_index,
@@ -445,14 +446,13 @@ def get_game_review(
         prices_map.setdefault(row.asset, [None] * 7)
         prices_map[row.asset][row.day_index - 1] = row.price
 
-    # 개선9: 가격 raw 지수(100 기준)를 등락률(%)로 환산하고 자산명도 한글화.
-    # 110.0 같은 지수 숫자가 그대로 노출되어 사용자가 해석하기 어렵던 문제 해결.
+    # 가격 raw 지수(100 기준)를 등락률(%)로 환산하고 자산명도 한글화.
     prices_pct = {
         kor(asset): [round(p - 100, 1) if p is not None else None for p in series]
         for asset, series in prices_map.items()
     }
 
-    # 개선1: 점수를 가르는 핵심 이벤트 일자를 명시해 LLM이 인과를 짚도록 함
+    # 점수를 가르는 핵심 이벤트 일자를 명시해 LLM이 인과를 짚도록 함
     key_event_day  = getattr(scenario, "key_event_day",  None) or 2
     trap_event_day = getattr(scenario, "trap_event_day", None) or 3
     crash_event_day = getattr(scenario, "crash_event_day", None) or 5
@@ -462,7 +462,7 @@ def get_game_review(
         f"- 급락 이벤트일(포트폴리오 방어가 필요했던 날): Day {crash_event_day}"
     )
 
-    # 개선2: 각 점수가 '무엇을 측정했는지'를 함께 전달해 점수-행동 인과 설명 유도
+    # 각 점수가 '무엇을 측정했는지'를 함께 전달해 점수-행동 인과 설명 유도
     score_text = (
         f"- 수익률 {result.return_score}/30 — 정답 전략 수익률({result.correct_strategy_return}%) "
         f"대비 본인 최종 수익률({result.final_return}%)의 격차로 산정\n"
@@ -477,8 +477,8 @@ def get_game_review(
 [시나리오]
 - 이름: {scenario.name} / 테마: {scenario.theme}
 - 투자 가능 자산: {', '.join(kor(a) for a in (scenario.assets or []))}
-- 정답 자산(이번 시나리오에서 성과가 좋은 자산): {', '.join(kor(a) for a in (getattr(scenario, 'correct_assets', None) or []))}
-- 함정 자산(피해야 할 자산): {', '.join(kor(a) for a in (getattr(scenario, 'trap_assets', None) or []))}
+- 이번 시나리오에서 성과가 좋았던 자산: {', '.join(kor(a) for a in (getattr(scenario, 'correct_assets', None) or []))}
+- 이번 시나리오에서 성과가 부진했던 자산: {', '.join(kor(a) for a in (getattr(scenario, 'trap_assets', None) or []))}
 
 [이벤트 타임라인]
 {event_text}
@@ -498,19 +498,21 @@ tags와 memo는 투자자의 당일 판단 근거입니다. 평가에 적극 반
 {score_text}
 
 [좋은 피드백 예시 — 이 정도의 구체성으로 작성하세요]
-"2일차 핵심 이벤트 직후 정답 자산인 채권 비중을 20%에서 45%로 늘리신 판단이 정확했습니다. 금리 인하를 기대하며 안전 자산을 키우신 근거가 시나리오 방향과 잘 맞았고, 이 대응 덕분에 누적 수익률이 +3.2%까지 개선되었습니다."
+"2일차 핵심 이벤트 직후 채권 비중을 20%에서 45%로 늘리신 판단이 정확했습니다. 금리 인하 기대가 커지며 안전자산이 강세를 보인 국면과 잘 맞았고, 이 대응 덕분에 누적 수익률이 +3.2%까지 개선되었습니다."
 
-반드시 아래 JSON 형식으로만 응답해주세요. 각 서술 항목은 3~4문장, 존댓말로 작성하세요.
+반드시 아래 JSON 형식으로만 응답해주세요. 모든 서술 항목은 존댓말로 작성하세요.
 자산명은 위 데이터에 표기된 한글 명칭(예: 채권, 금, 성장주)으로만 쓰고, 가격은 등락률(%)로 표현하세요:
 {{
-  "headline": "이번 시즌 투자를 한 줄(20자 내외)로 요약 (예: '방어는 좋았으나 기회를 놓친 시즌')",
-  "good_judgment": "잘한 판단을 구체적 자산명·일자·비중(%) 근거와 함께 설명",
-  "bad_judgment": "아쉬운 판단을 구체적 자산명·일자·비중(%) 근거와 함께 설명",
-  "overall_review": "먼저 정답 전략 수익률 대비 본인 성과 수준을 한 문장으로 언급한 뒤, 투자 스타일의 일관된 패턴과 다음 시즌을 위한 실질적 조언을 제시"
+  "good_judgment": "잘한 판단을 구체적 자산명·일자·비중(%) 근거와 함께 설명 (최대 4문장)",
+  "bad_judgment": "아쉬운 판단을 구체적 자산명·일자·비중(%) 근거와 함께 설명 (최대 4문장)",
+  "overall_review": "반드시 정확히 5문장으로, 다음 순서를 지켜 작성: ①모범 전략 수익률 대비 본인 성과 수준 ②투자 스타일을 한 문장으로 규정 ③그 스타일의 강점 ④그 스타일의 한계 ⑤앞으로 바꿀 단 하나의 구체적 행동('다음부터는 ~' 식으로 표현, '다음 시즌' 같은 표현 금지)"
 }}
 
 [작성 규칙]
-- 각 섹션은 서로 다른 관점을 다루세요. overall_review는 good_judgment·bad_judgment에서 이미 언급한 구체적 일자·자산을 반복하지 말고, 스타일 패턴과 새로운 조언에 집중하세요.
+- 각 섹션은 서로 다른 평가 축을 다루세요(예: good_judgment=방어·타이밍, bad_judgment=기회 포착·분산). overall_review는 good_judgment·bad_judgment에서 이미 언급한 구체적 일자·거래를 반복하지 말고, 스타일 패턴과 새로운 조언에 집중하세요.
+- '정답 자산', '함정 자산', '정답을 맞혔다/틀렸다'는 표현을 절대 쓰지 마세요. 특정 자산이 좋았거나 나빴던 이유는 시나리오의 이벤트·금리 환경·가격 흐름으로 설명하세요. (예: "함정 자산인 성장주를 늘린 점" → "고금리가 길어지는 국면에서 약세가 이어진 성장주를 늘린 점")
+- 향후 조언은 이번에 약세였던 자산을 이름으로 언급하되 시장 논리로 풀어, 같은 신호가 다시 왔을 때 어떻게 다르게 행동할지로 구체화하세요. '분산투자를 하세요' 같은 범용 격언은 금지합니다. 조언은 '다음 시즌'이라는 표현 대신 '다음부터는 ~', '앞으로는 ~'처럼 표현하세요.
+- 각 섹션에서 수치(%·일자)는 핵심 근거 2~3개로만 인용하고, 나머지는 판단의 의미를 문장으로 설명하세요.
 - 자산명에 영문 코드(bonds, gold 등)를 절대 쓰지 마세요.
 - 'tags', 'memo', 'allocation' 등 데이터 필드명이나 '#해시태그_원형'을 글에 그대로 노출하지 마세요. 그 의미를 자연스러운 우리말로 풀어 쓰세요.
 - 점수는 'X/Y' 숫자 표기 대신 서술형(예: '만점에 가까운', '절반 수준에 그친')으로 자연스럽게 표현하세요. 단, 수익률·비중의 % 수치는 그대로 사용해도 됩니다."""
@@ -528,7 +530,7 @@ tags와 memo는 투자자의 당일 판단 근거입니다. 평가에 적극 반
 
     try:
         client = OpenAI(api_key=OPENAI_API_KEY)
-        # 개선3: 역할·규칙을 system 메시지로 분리하고 추측 금지 가드레일 추가
+        # 역할·규칙을 system 메시지로 분리하고 추측 금지 가드레일 추가
         system_prompt = (
             "당신은 신중하고 근거 중심적인 투자 시뮬레이션 코치입니다. "
             "반드시 제공된 데이터에 근거해서만 평가하고, 데이터에 없는 사실은 추측하지 마세요. "
@@ -536,28 +538,23 @@ tags와 memo는 투자자의 당일 판단 근거입니다. 평가에 적극 반
             "금액(원 단위 숫자)은 절대 언급하지 말고 자산 비중(%)·수익률(%)만 사용하세요. "
             "자산명은 반드시 한글로만 표기하고(영문 코드 bonds·gold 등 사용 금지), "
             "가격은 100 기준 지수 숫자 대신 등락률(%)로만 표현하세요. "
+            "'정답 자산'·'함정 자산'이라는 표현이나 정답을 맞혔다는 식의 서술은 절대 쓰지 말고, "
+            "자산의 성과는 시장 논리(이벤트·금리 환경·가격 흐름)로 설명하세요. "
             "투자자가 선택한 판단 근거 태그와 직접 작성한 메모를 평가에 반영하되, "
             "'tags', 'memo' 같은 용어나 '#해시태그_원형'을 그대로 노출하지 말고 "
             "'~라고 판단하신 점', '금리 인하를 기대하신 근거' 처럼 자연스러운 우리말 문장으로 풀어 쓰세요. "
             "점수도 '20/20' 같은 표기 대신 '안정성 측면에서 만점에 가까운 성과' 처럼 서술형으로 표현하세요."
         )
         response = client.chat.completions.create(
-            model="gpt-5.5",  # 개선7: 캐싱으로 시즌당 1회만 호출되므로 최고 품질 모델 사용
+            model="gpt-5.5",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user",   "content": prompt},
             ],
             response_format={"type": "json_object"},
-            # 개선6: GPT-5 계열은 temperature 커스텀 미지원(기본값 1 고정).
-            # 톤 일관성은 system 메시지의 "근거 중심" 가드레일로 확보.
         )
         review = json.loads(response.choices[0].message.content)
-        # headline은 인용 아이콘이 별도로 붙으므로, LLM이 예시를 따라 앞뒤로 감싼
-        # 따옴표(", ', “”, ‘’)를 제거해 순수 텍스트만 노출한다.
-        headline = (review.get("headline", "") or "").strip()
-        headline = headline.strip("\"'“”‘’").strip()
         data = {
-            "headline":       headline,
             "good_judgment":  review.get("good_judgment", ""),
             "bad_judgment":   review.get("bad_judgment", ""),
             "overall_review": review.get("overall_review", ""),
