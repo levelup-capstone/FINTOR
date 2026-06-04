@@ -22,10 +22,12 @@ function notifySeasonExpIfFinalized(result: AllocateResult) {
 const STEP_PCT = 10;
 
 const ASSET_META: Record<string, { label: string; color: string; accent: string }> = {
-  cash:             { label: '현금',       color: '#059669', accent: 'accent-emerald-600' },
-  dollar:           { label: '달러',       color: '#16a34a', accent: 'accent-green-600' },
-  bonds:            { label: '채권',       color: '#a855f7', accent: 'accent-purple-500' },
-  'gov-bonds':      { label: '국채',       color: '#7c3aed', accent: 'accent-violet-600' },
+  cash:             { label: '현금',                    color: '#059669', accent: 'accent-emerald-600' },
+  dollar:           { label: '달러',                    color: '#16a34a', accent: 'accent-green-600' },
+  'dollar-cash':    { label: '💵 달러 예금',             color: '#16a34a', accent: 'accent-green-600' },
+  bonds:            { label: '채권',                    color: '#a855f7', accent: 'accent-purple-500' },
+  'gov-bonds':      { label: '국채',                    color: '#7c3aed', accent: 'accent-violet-600' },
+  'kr-bond':        { label: '🏛️ 한국 국채',             color: '#7c3aed', accent: 'accent-violet-600' },
   'short-bond':     { label: '단기채',     color: '#8b5cf6', accent: 'accent-violet-500' },
   'corp-bond':      { label: '회사채',     color: '#a78bfa', accent: 'accent-violet-400' },
   tips:             { label: 'TIPS',       color: '#6d28d9', accent: 'accent-purple-700' },
@@ -49,7 +51,13 @@ const ASSET_META: Record<string, { label: string; color: string; accent: string 
   coin:             { label: '코인',       color: '#f97316', accent: 'accent-orange-500' },
   bitcoin:          { label: '비트코인',   color: '#f59e0b', accent: 'accent-amber-500' },
   reits:            { label: '리츠',       color: '#06b6d4', accent: 'accent-cyan-500' },
-  commodities:      { label: '원자재',     color: '#84cc16', accent: 'accent-lime-500' },
+  commodities:      { label: '원자재',                    color: '#84cc16', accent: 'accent-lime-500' },
+  'oil-copper':     { label: '🛢️ 원유·구리',              color: '#84cc16', accent: 'accent-lime-500' },
+  'brazil-bond':    { label: '🌎 브라질·튀르키예 채권',    color: '#dc2626', accent: 'accent-red-600' },
+  'export-stock':   { label: '🏭 수출 대기업 주식',        color: '#f97316', accent: 'accent-orange-500' },
+  'cyclical-stock': { label: '경기민감 대기업 주식',        color: '#0369a1', accent: 'accent-sky-700' },
+  'high-yield':     { label: '회사채 (고금리 채권)',        color: '#9333ea', accent: 'accent-purple-600' },
+  'infra-stock':    { label: '인프라·건설주',              color: '#b45309', accent: 'accent-amber-700' },
   oil:              { label: '원유',       color: '#78716c', accent: 'accent-stone-500' },
   agriculture:      { label: '농산물',     color: '#65a30d', accent: 'accent-lime-600' },
   yen:              { label: '엔화',       color: '#0c4a6e', accent: 'accent-sky-900' },
@@ -62,6 +70,11 @@ const ASSET_META: Record<string, { label: string; color: string; accent: string 
   'china-stock':    { label: '중국주식',   color: '#991b1b', accent: 'accent-red-800' },
   'construction-stock': { label: '건설주',  color: '#92400e', accent: 'accent-amber-800' },
   'japan-bank':     { label: '일본은행주', color: '#1e3a5f', accent: 'accent-blue-950' },
+  'savings':         { label: '예·적금',   color: '#10b981', accent: 'accent-emerald-500' },
+  'commodity-stock': { label: '원자재주',  color: '#a16207', accent: 'accent-yellow-700' },
+  'ai-stock':        { label: 'AI주',      color: '#7c3aed', accent: 'accent-violet-600' },
+  'long-bond':       { label: '장기채',    color: '#4f46e5', accent: 'accent-indigo-600' },
+  'us-bond':         { label: '미국 국채', color: '#1d4ed8', accent: 'accent-blue-700' },
 };
 
 const REASON_TAGS = [
