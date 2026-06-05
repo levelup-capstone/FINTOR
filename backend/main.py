@@ -55,10 +55,16 @@ def startup_event():
     print("🏢 운영 모드입니다.")
 
     # 시드 데이터: 게임 시나리오·퀴즈 문제가 없으면 초기 데이터 삽입
-    run_game_seed()
+    try:
+        run_game_seed()
+    except Exception as e:
+        print(f"⚠️ 게임 시드 실패 (서버 계속 시작): {e}")
+
     db = next(get_db())
     try:
         run_quiz_seed(db)
+    except Exception as e:
+        print(f"⚠️ 퀴즈 시드 실패 (서버 계속 시작): {e}")
     finally:
         db.close()
 
@@ -70,6 +76,8 @@ def startup_event():
     season_db = next(get_db())
     try:
         get_or_create_current_season(season_db)
+    except Exception as e:
+        print(f"⚠️ 시즌 생성 실패 (서버 계속 시작): {e}")
     finally:
         season_db.close()
 
