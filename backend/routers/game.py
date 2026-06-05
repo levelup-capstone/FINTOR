@@ -15,6 +15,32 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 router = APIRouter()
 
+# 리뷰 프롬프트에 넣는 자산 코드를 한글로 치환하기 위한 사전.
+# 프론트 SimulatorDashboard.tsx의 ASSET_META와 동기화 상태를 유지해야 한다
+# (한쪽에만 자산이 추가되면 화면/리뷰의 자산명이 어긋남).
+# 추후에 시나리오가 완성되면 프론트와 함께 변경 예정
+ASSET_LABELS = {
+    "cash": "현금", "dollar": "달러", "bonds": "채권", "gov-bonds": "국채",
+    "short-bond": "단기채", "corp-bond": "회사채", "tips": "TIPS", "gold": "금",
+    "bluechip-stock": "우량주", "growth-stock": "성장주", "value-stock": "가치주",
+    "dividend-stock": "배당주", "consumer-staples": "소비재주", "stocks": "주식",
+    "nasdaq": "나스닥", "tech-stock": "기술주", "dot-com": "닷컴주",
+    "telecom-stock": "통신주", "semiconductor": "반도체주",
+    "internet-media": "인터넷미디어", "emerging": "신흥국", "em-stock": "신흥국주",
+    "energy": "에너지주", "defense-stock": "방산주", "coin": "코인",
+    "bitcoin": "비트코인", "reits": "리츠", "commodities": "원자재", "oil": "원유",
+    "agriculture": "농산물", "yen": "엔화", "finance-stock": "금융주",
+    "german-bond": "독일국채", "pigs-bond": "PIGS국채", "korean-stock": "코스피주식",
+    "won": "원화예금", "korean-bond": "한국국채", "china-stock": "중국주식",
+    "construction-stock": "건설주", "japan-bank": "일본은행주", "em-bond": "신흥국채권",
+    "export-stock": "수출주", "savings": "예금", "cyclical-stock": "경기민감주",
+}
+
+
+def kor(code: str) -> str:
+    """자산 코드를 한글 라벨로. 미정의 코드는 원문 유지."""
+    return ASSET_LABELS.get(code, code)
+
 
 def _calc_portfolio_value(
     prev_value: float,
@@ -55,7 +81,8 @@ def get_my_participation(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    p = crud.get_active_participation(db, current_user.id)
+    # 완료된 시즌도 포함해 최신 참여를 반환 (로그아웃 등으로 localStorage가 비어도 DB 기준 상태 복원)
+    p = crud.get_latest_participation(db, current_user.id)
     if not p:
         return {"success": True, "data": None}
     return {"success": True, "data": {"participation_id": p.id, "scenario_id": p.scenario_id}}
@@ -400,10 +427,11 @@ def get_game_review(
     alloc_rows = crud.get_allocations_by_participation(db, participation_id)
     result     = crud.get_game_result(db, participation_id)
 
+    # 투자 비중의 자산 코드를 한글 라벨로 치환(사용자가 화면에서 보는 표기와 일치)
     alloc_summary = [
         {
             "day":         a.day_index,
-            "allocations": a.allocations or {},
+            "allocations": {kor(k): v for k, v in (a.allocations or {}).items()},
             "return_rate": round(a.return_rate, 2) if a.return_rate is not None else None,
             "tags":        a.tags or [],
             "memo":        a.memo or "",
@@ -411,42 +439,83 @@ def get_game_review(
         for a in alloc_rows
     ]
 
+    # 자산별 가격 추이를 {자산명: [day1, ..., day7]} 형태로 재구성 (시작 100 기준)
+    prices_rows = crud.get_prices_by_scenario(db, scenario.id)
+    prices_map: dict[str, list] = {}
+    for row in prices_rows:
+        prices_map.setdefault(row.asset, [None] * 7)
+        prices_map[row.asset][row.day_index - 1] = row.price
+
+    # 가격 raw 지수(100 기준)를 등락률(%)로 환산하고 자산명도 한글화.
+    prices_pct = {
+        kor(asset): [round(p - 100, 1) if p is not None else None for p in series]
+        for asset, series in prices_map.items()
+    }
+
+    # 점수를 가르는 핵심 이벤트 일자를 명시해 LLM이 인과를 짚도록 함
+    key_event_day  = getattr(scenario, "key_event_day",  None) or 2
+    trap_event_day = getattr(scenario, "trap_event_day", None) or 3
+    crash_event_day = getattr(scenario, "crash_event_day", None) or 5
+    event_text = (
+        f"- 핵심 이벤트일(정답 자산 비중을 늘렸어야 함): Day {key_event_day}\n"
+        f"- 함정 이벤트일(함정 자산을 늘리면 안 됐던 날): Day {trap_event_day}\n"
+        f"- 급락 이벤트일(포트폴리오 방어가 필요했던 날): Day {crash_event_day}"
+    )
+
+    # 각 점수가 '무엇을 측정했는지'를 함께 전달해 점수-행동 인과 설명 유도
     score_text = (
-        f"수익률 점수 {result.return_score}/30, "
-        f"시나리오 적응 {result.scenario_score}/30, "
-        f"분산투자 {result.diversity_score}/20, "
-        f"안정성 {result.stability_score}/20, "
-        f"종합 {result.total_score}/100, "
-        f"최종 수익률 {result.final_return}%"
+        f"- 수익률 {result.return_score}/30 — 정답 전략 수익률({result.correct_strategy_return}%) "
+        f"대비 본인 최종 수익률({result.final_return}%)의 격차로 산정\n"
+        f"- 시나리오 적응 {result.scenario_score}/30 — 정답 자산 평균 보유 + 핵심 이벤트 대응 + 함정 회피\n"
+        f"- 분산투자 {result.diversity_score}/20 — 7일 평균 보유 자산 수(많을수록 고득점)\n"
+        f"- 안정성 {result.stability_score}/20 — 일일 하락 변동성 + 급락일 방어력\n"
+        f"- 종합 {result.total_score}/100"
     ) if result else "점수 데이터 없음"
 
-    prompt = f"""당신은 투자 시뮬레이션 코치입니다. 아래 투자자의 7일 시뮬레이션 결과를 분석하여 구체적이고 실용적인 피드백을 제공하세요.
-
-[주의] 응답에 금액(원 단위 숫자)을 절대 언급하지 마세요. 자산 비중(%)과 수익률(%)만 사용하세요.
+    prompt = f"""아래 투자자의 7일 시뮬레이션 결과를 분석하여 구체적이고 실용적인 피드백을 제공하세요.
 
 [시나리오]
 - 이름: {scenario.name} / 테마: {scenario.theme}
-- 투자 가능 자산: {', '.join(scenario.assets or [])}
-- 정답 자산(이번 시나리오에서 성과가 좋은 자산): {', '.join(getattr(scenario, 'correct_assets', None) or [])}
-- 함정 자산(피해야 할 자산): {', '.join(getattr(scenario, 'trap_assets', None) or [])}
+- 투자 가능 자산: {', '.join(kor(a) for a in (scenario.assets or []))}
+- 이번 시나리오에서 성과가 좋았던 자산: {', '.join(kor(a) for a in (getattr(scenario, 'correct_assets', None) or []))}
+- 이번 시나리오에서 성과가 부진했던 자산: {', '.join(kor(a) for a in (getattr(scenario, 'trap_assets', None) or []))}
+
+[이벤트 타임라인]
+{event_text}
+
+[자산별 등락률 추이 (%, Day1=0% 기준, Day1~Day7. 양수=상승, 음수=하락)]
+{json.dumps(prices_pct, ensure_ascii=False)}
 
 [7일 투자 내역]
 - allocations: 각 자산 비중(%)
 - return_rate: 해당 일 기준 누적 수익률(%)
 - tags: 투자자가 직접 선택한 투자 판단 근거 태그 (예: #금리인하_지연, #실적호조 등)
 - memo: 투자자가 직접 입력한 자유 메모 (투자 이유, 전략 등)
-tags와 memo는 투자자의 당일 판단 근거입니다. 이를 반드시 피드백에 반영하세요.
+tags와 memo는 투자자의 당일 판단 근거입니다. 평가에 적극 반영하되, 'tags'·'memo'라는 단어나 '#금리인하_지연' 같은 해시태그 원형을 글에 그대로 쓰지 말고 그 의미를 자연스러운 문장으로 풀어 인용하세요. (예: #금리인하_지연 → "금리 인하가 늦어질 것이라 보신 판단")
 {json.dumps(alloc_summary, ensure_ascii=False, indent=2)}
 
-[최종 점수]
+[최종 점수와 산출 근거]
 {score_text}
 
-반드시 아래 JSON 형식으로만 응답해주세요. 각 항목은 2~3문장, 존댓말로 작성하세요:
+[좋은 피드백 예시 — 이 정도의 구체성으로 작성하세요]
+"2일차 핵심 이벤트 직후 채권 비중을 20%에서 45%로 늘리신 판단이 정확했습니다. 금리 인하 기대가 커지며 안전자산이 강세를 보인 국면과 잘 맞았고, 이 대응 덕분에 누적 수익률이 +3.2%까지 개선되었습니다."
+
+반드시 아래 JSON 형식으로만 응답해주세요. 모든 서술 항목은 존댓말로 작성하세요.
+자산명은 위 데이터에 표기된 한글 명칭(예: 채권, 금, 성장주)으로만 쓰고, 가격은 등락률(%)로 표현하세요:
 {{
-  "good_judgment": "잘한 판단을 구체적 자산명·일자·비중(%) 근거와 함께 설명 (금액 언급 금지)",
-  "bad_judgment": "아쉬운 판단을 구체적 자산명·일자·비중(%) 근거와 함께 설명 (금액 언급 금지)",
-  "overall_review": "전반적인 투자 스타일 평가와 다음 시즌을 위한 실질적 조언 (금액 언급 금지)"
-}}"""
+  "good_judgment": "잘한 판단을 구체적 자산명·일자·비중(%) 근거와 함께 설명 (최대 4문장)",
+  "bad_judgment": "아쉬운 판단을 구체적 자산명·일자·비중(%) 근거와 함께 설명 (최대 4문장)",
+  "overall_review": "반드시 정확히 5문장으로, 다음 순서를 지켜 작성: ①모범 전략 수익률 대비 본인 성과 수준 ②투자 스타일을 한 문장으로 규정 ③그 스타일의 강점 ④그 스타일의 한계 ⑤앞으로 바꿀 단 하나의 구체적 행동('다음부터는 ~' 식으로 표현, '다음 시즌' 같은 표현 금지)"
+}}
+
+[작성 규칙]
+- 각 섹션은 서로 다른 평가 축을 다루세요(예: good_judgment=방어·타이밍, bad_judgment=기회 포착·분산). overall_review는 good_judgment·bad_judgment에서 이미 언급한 구체적 일자·거래를 반복하지 말고, 스타일 패턴과 새로운 조언에 집중하세요.
+- '정답 자산', '함정 자산', '정답을 맞혔다/틀렸다'는 표현을 절대 쓰지 마세요. 특정 자산이 좋았거나 나빴던 이유는 시나리오의 이벤트·금리 환경·가격 흐름으로 설명하세요. (예: "함정 자산인 성장주를 늘린 점" → "고금리가 길어지는 국면에서 약세가 이어진 성장주를 늘린 점")
+- 향후 조언은 이번에 약세였던 자산을 이름으로 언급하되 시장 논리로 풀어, 같은 신호가 다시 왔을 때 어떻게 다르게 행동할지로 구체화하세요. '분산투자를 하세요' 같은 범용 격언은 금지합니다. 조언은 '다음 시즌'이라는 표현 대신 '다음부터는 ~', '앞으로는 ~'처럼 표현하세요.
+- 각 섹션에서 수치(%·일자)는 핵심 근거 2~3개로만 인용하고, 나머지는 판단의 의미를 문장으로 설명하세요.
+- 자산명에 영문 코드(bonds, gold 등)를 절대 쓰지 마세요.
+- 'tags', 'memo', 'allocation' 등 데이터 필드명이나 '#해시태그_원형'을 글에 그대로 노출하지 마세요. 그 의미를 자연스러운 우리말로 풀어 쓰세요.
+- 점수는 'X/Y' 숫자 표기 대신 서술형(예: '만점에 가까운', '절반 수준에 그친')으로 자연스럽게 표현하세요. 단, 수익률·비중의 % 수치는 그대로 사용해도 됩니다."""
 
     # AI 리뷰는 생성 비용이 크므로 한 번 생성된 결과를 feedback_text에 캐싱
     if result and result.feedback_text:
@@ -461,9 +530,27 @@ tags와 memo는 투자자의 당일 판단 근거입니다. 이를 반드시 피
 
     try:
         client = OpenAI(api_key=OPENAI_API_KEY)
+        # 역할·규칙을 system 메시지로 분리하고 추측 금지 가드레일 추가
+        system_prompt = (
+            "당신은 신중하고 근거 중심적인 투자 시뮬레이션 코치입니다. "
+            "반드시 제공된 데이터에 근거해서만 평가하고, 데이터에 없는 사실은 추측하지 마세요. "
+            "모든 평가에는 자산명·일자·비중(%) 중 최소 하나의 구체적 근거를 포함하세요. "
+            "금액(원 단위 숫자)은 절대 언급하지 말고 자산 비중(%)·수익률(%)만 사용하세요. "
+            "자산명은 반드시 한글로만 표기하고(영문 코드 bonds·gold 등 사용 금지), "
+            "가격은 100 기준 지수 숫자 대신 등락률(%)로만 표현하세요. "
+            "'정답 자산'·'함정 자산'이라는 표현이나 정답을 맞혔다는 식의 서술은 절대 쓰지 말고, "
+            "자산의 성과는 시장 논리(이벤트·금리 환경·가격 흐름)로 설명하세요. "
+            "투자자가 선택한 판단 근거 태그와 직접 작성한 메모를 평가에 반영하되, "
+            "'tags', 'memo' 같은 용어나 '#해시태그_원형'을 그대로 노출하지 말고 "
+            "'~라고 판단하신 점', '금리 인하를 기대하신 근거' 처럼 자연스러운 우리말 문장으로 풀어 쓰세요. "
+            "점수도 '20/20' 같은 표기 대신 '안정성 측면에서 만점에 가까운 성과' 처럼 서술형으로 표현하세요."
+        )
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
+            model="gpt-5.5",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user",   "content": prompt},
+            ],
             response_format={"type": "json_object"},
         )
         review = json.loads(response.choices[0].message.content)

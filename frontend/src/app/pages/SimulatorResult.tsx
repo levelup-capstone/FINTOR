@@ -288,12 +288,10 @@ export function SimulatorResult() {
             <span className="material-symbols-outlined">psychology</span>
           </div>
           <div className="flex-1 min-w-0">
-            <h4 className="text-base font-bold text-on-surface mb-1">총평 및 다음 시즌 조언</h4>
+            <h4 className="text-base font-bold text-on-surface mb-1">총평</h4>
             {reviewLoading ? (
-              <div className="flex flex-col gap-2 mt-2">
-                <div className="h-3 bg-surface-container rounded-full animate-pulse w-full" />
-                <div className="h-3 bg-surface-container rounded-full animate-pulse w-5/6" />
-                <div className="h-3 bg-surface-container rounded-full animate-pulse w-4/6" />
+              <div className="mt-2">
+                <ReviewLoading />
               </div>
             ) : (
               <p className="text-base font-medium text-on-surface-variant leading-relaxed">
@@ -346,6 +344,16 @@ function ScoreBar({ label, score, max }: { label: string; score: number; max: nu
   );
 }
 
+// AI 리뷰 생성 대기 중 각 섹터에 표시할 안내 문구 (회전 아이콘 + 텍스트)
+function ReviewLoading() {
+  return (
+    <div className="flex items-center gap-2 text-[#1A237E]">
+      <span className="material-symbols-outlined flex-shrink-0 animate-spin">progress_activity</span>
+      <p className="text-sm font-bold leading-snug">AI가 이번 시즌 투자 내역을 분석하고 있어요.</p>
+    </div>
+  );
+}
+
 function RetroCard({ icon, title, tone, loading, children }: { icon: string; title: string; tone: 'primary' | 'error'; loading?: boolean; children: ReactNode }) {
   const toneCls = tone === 'error' ? 'text-red-700' : 'text-[#1A237E]';
   return (
@@ -355,11 +363,7 @@ function RetroCard({ icon, title, tone, loading, children }: { icon: string; tit
         <span className="text-base font-bold">{title}</span>
       </div>
       {loading ? (
-        <div className="flex flex-col gap-2">
-          <div className="h-3 bg-surface-container rounded-full animate-pulse w-full" />
-          <div className="h-3 bg-surface-container rounded-full animate-pulse w-5/6" />
-          <div className="h-3 bg-surface-container rounded-full animate-pulse w-3/4" />
-        </div>
+        <ReviewLoading />
       ) : (
         <p className="text-base font-medium text-on-surface-variant leading-relaxed whitespace-pre-line">{children}</p>
       )}

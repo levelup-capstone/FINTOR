@@ -236,6 +236,12 @@ def get_active_participation(db: Session, user_id: int):
         models.GameParticipation.is_finalized == False,
     ).order_by(models.GameParticipation.created_at.desc()).first()
 
+def get_latest_participation(db: Session, user_id: int):
+    """유저의 가장 최근 participation 반환(완료 포함). 대시보드 상태 표시용."""
+    return db.query(models.GameParticipation).filter(
+        models.GameParticipation.user_id == user_id,
+    ).order_by(models.GameParticipation.created_at.desc()).first()
+
 def create_participation(db: Session, user_id: int, scenario_id: int):
     p = models.GameParticipation(
         user_id     = user_id,

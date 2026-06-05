@@ -16,8 +16,8 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             cd ~/capstone7
-            git fetch origin release
+            git fetch https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/levelup-capstone/capstone7.git release
             git checkout release
-            git pull origin release
+            git reset --hard FETCH_HEAD
             docker compose down
             docker compose up -d --build

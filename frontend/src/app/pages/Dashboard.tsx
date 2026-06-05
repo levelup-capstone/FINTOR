@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router";
-import { fetchParticipation, fetchMyParticipation, type ParticipationData } from "./simulatorApi";
+import { fetchParticipation, fetchMyParticipation, fetchScenarios, fetchMyClearedScenarios, type ParticipationData, type ScenarioInfo, type ClearedScenario } from "./simulatorApi";
+import { determineStates } from "./simulatorState";
 import { fetchQuizStatus } from "./quizApi";
 
 const MAX_EXP = 100;
@@ -187,38 +188,52 @@ export function Dashboard() {
 
   // ─── 시뮬레이터 (오늘의 시나리오) ──────────────────────────────────────
   const [pData, setPData] = useState<ParticipationData | null>(null);
+  const [scenarios, setScenarios] = useState<ScenarioInfo[]>([]);
+  const [cleared, setCleared] = useState<ClearedScenario[]>([]);
   const [pLoading, setPLoading] = useState(true);
 
   useEffect(() => {
-    const load = async (id: number) => {
-      const d = await fetchParticipation(id);
-      if (d) setPData(d);
-      setPLoading(false);
-    };
-    const pid = localStorage.getItem('participationId');
-    if (pid) {
-      load(Number(pid));
-    } else {
-      fetchMyParticipation().then((r) => {
+    (async () => {
+      // 시나리오·클리어 목록은 참여 상태와 무관하게 항상 필요(새 시나리오 개방 여부 판정)
+      const [sc, cl] = await Promise.all([fetchScenarios(), fetchMyClearedScenarios()]);
+      setScenarios(sc);
+      setCleared(cl);
+
+      const load = async (id: number) => {
+        const d = await fetchParticipation(id);
+        if (d) setPData(d);
+      };
+      const pid = localStorage.getItem('participationId');
+      if (pid) {
+        await load(Number(pid));
+      } else {
+        const r = await fetchMyParticipation();
         if (r) {
           localStorage.setItem('participationId', String(r.participation_id));
-          load(r.participation_id);
-        } else {
-          setPLoading(false);
+          await load(r.participation_id);
         }
-      });
-    }
+      }
+      setPLoading(false);
+    })();
   }, []);
 
   // 시뮬레이터 표시 상태: 참여 전 / 오늘 미완료 / 오늘 완료 / 시즌 종료
   type SimState = 'none' | 'today_pending' | 'today_done' | 'finalized';
-  const simState: SimState = !pData
-    ? 'none'
-    : pData.is_finalized
-    ? 'finalized'
-    : pData.allocations.some((a) => a.day_index === pData.today_index)
-    ? 'today_done'
-    : 'today_pending';
+  // 시작 가능한 새 시나리오가 열렸는지(완료 시즌이라도 새 시즌이 열렸으면 '참여 전'으로 안내)
+  const hasAvailable = useMemo(
+    () => determineStates(scenarios, pData, cleared).some((s) => s.status === 'available'),
+    [scenarios, pData, cleared],
+  );
+  const simState: SimState =
+    pData && !pData.is_finalized
+      ? pData.allocations.some((a) => a.day_index === pData.today_index)
+        ? 'today_done'
+        : 'today_pending'
+      : hasAvailable
+      ? 'none'
+      : pData?.is_finalized
+      ? 'finalized'
+      : 'none';
 
   // 오늘 완료 시 표시할 결과 값
   const todayAlloc = pData?.allocations.find((a) => a.day_index === pData.today_index);
