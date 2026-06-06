@@ -61,8 +61,19 @@ def analyze_news_with_gpt(title: str, full_text: str) -> dict:
     # GPT 입력 토큰 비용 절감을 위해 본문을 3000자로 제한
     truncated_text = full_text[:3000]
 
-    prompt = f"""당신은 전문 금융 애널리스트입니다.
-다음 뉴스 기사의 제목과 본문을 심층 분석하여, 반드시 아래의 JSON 형식으로만 응답해 주세요.
+    # 분석 원칙(추측 금지·근거 기반)과 판단 기준을 명시하여 환각을 줄이고 일관성을 높임
+    system_prompt = """당신은 한국 금융 시장을 전문으로 분석하는 시니어 금융 애널리스트입니다.
+
+[분석 원칙]
+1. 반드시 제공된 본문에 근거하여 판단합니다. 본문에 없는 사실은 추측하지 않습니다.
+2. 감성(sentiment)은 '개인 투자자 관점에서 해당 자산/시장에 긍정적인가 부정적인가'를 기준으로 판단합니다.
+   - 호재: 가격 상승·실적 개선·정책 우호 등 투자자에게 유리한 내용이 핵심일 때
+   - 악재: 가격 하락·실적 악화·규제 강화·리스크 부각 등 불리한 내용이 핵심일 때
+   - 중립: 단순 사실 전달, 영향이 불분명하거나 호재·악재가 혼재되어 한쪽으로 단정하기 어려울 때
+3. category와 tag는 본문의 핵심 주제와 직접 관련된 것만 선택하고, 명확히 들어맞는 것이 없으면 '기타'를 선택합니다.
+4. 제시된 보기 목록에 없는 값은 절대 만들어내지 않습니다."""
+
+    user_prompt = f"""다음 뉴스 기사를 분석하여 반드시 아래 JSON 형식으로만 응답해 주세요.
 
 [뉴스 기사]
 제목: {title}
@@ -73,13 +84,18 @@ def analyze_news_with_gpt(title: str, full_text: str) -> dict:
     "category": "주식, ETF, 예적금, 채권, 암호화폐, 원화, 금, 기타 중 반드시 택1",
     "sentiment": "호재, 악재, 중립 중 반드시 택1",
     "tag": "반도체, 디스플레이, IT, 게임, AI, 로봇, 통신/네트워크, 자동차, 배터리, 조선, 우주항공, 방산, 바이오, 헬스케어, 금융, 증권, 가상자산/핀테크, 철강/금속, 화학/정유, 건설/건자재, 유통/소비재, 화장품/의류, 음식료, 엔터테인먼트/미디어, 여행/항공, 에너지/환경, 전력/유틸리티, 기타 중 기사 본문의 핵심 주제와 가장 밀접한 것 반드시 택1",
-    "reason": "이 기사가 왜 해당 감성(호재/악재/중립)인지 본문 내용을 바탕으로 50자 이내로 명확하게 존댓말로 작성"
+    "reason": "이 기사가 왜 해당 감성(호재/악재/중립)인지 본문의 핵심 근거를 들어 50자 이내로 명확하게 존댓말로 작성"
 }}"""
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
+            model="gpt-5.5",
+            # 분류 작업 특성상 low로도 정확도가 충분하며 비용·지연을 최소화
+            reasoning_effort="low",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
             response_format={"type": "json_object"},
         )
         return json.loads(response.choices[0].message.content)
