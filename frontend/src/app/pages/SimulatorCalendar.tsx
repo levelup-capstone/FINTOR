@@ -28,6 +28,7 @@ const ASSET_META: Record<string, { label: string; color: string }> = {
   emerging:         { label: '신흥국',     color: '#0d9488' },
   'em-stock':       { label: '신흥국주',   color: '#0d9488' },
   energy:           { label: '에너지주',   color: '#d97706' },
+  'savings':         { label: '예·적금',   color: '#10b981' },
   'defense-stock':  { label: '방산주',     color: '#4b5563' },
   coin:             { label: '코인',       color: '#f97316' },
   bitcoin:          { label: '비트코인',   color: '#f59e0b' },
