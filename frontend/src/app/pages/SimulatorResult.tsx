@@ -11,6 +11,7 @@ export function SimulatorResult() {
   const [reviewData, setReviewData] = useState<GameReview | null>(null);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [resolvedPid, setResolvedPid] = useState<string | null>(null);
 
   // 시즌 종료로 레벨업한 경우 SimulatorDashboard가 sessionStorage에 넣어둠
   const [levelUpPayload, setLevelUpPayload] = useState<LevelUpPayload | null>(null);
@@ -19,6 +20,7 @@ export function SimulatorResult() {
     // URL ?pid= (다른 클리어한 시즌 결과 조회) → 없으면 localStorage의 활성 participationId 사용
     const pidParam = searchParams.get('pid');
     const pid = pidParam ?? localStorage.getItem('participationId');
+    setResolvedPid(pid);
     if (!pid) { setLoading(false); return; }
     fetchParticipation(Number(pid)).then(async (d) => {
       setPData(d);
@@ -305,7 +307,7 @@ export function SimulatorResult() {
       {/* 6. Actions */}
       <section className="flex flex-col sm:flex-row justify-end items-center gap-4 pt-4 border-t border-outline-variant/30">
         <button
-          onClick={() => navigate('/dashboard/simulator/season/calendar')}
+          onClick={() => navigate(`/dashboard/simulator/season/calendar${resolvedPid ? `?pid=${resolvedPid}` : ''}`)}
           className="w-full sm:w-auto px-6 py-3 rounded-xl bg-surface-container text-on-surface font-bold text-sm hover:bg-surface-container-high transition-colors flex items-center justify-center gap-2"
         >
           <span className="material-symbols-outlined">calendar_month</span>
