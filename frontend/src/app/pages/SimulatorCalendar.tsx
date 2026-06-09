@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { fetchParticipation, advanceDay, INITIAL_CASH, type ParticipationData } from './simulatorApi';
 
 const TOTAL_DAYS = 7;
@@ -46,6 +46,18 @@ const ASSET_META: Record<string, { label: string; color: string }> = {
   'china-stock':    { label: '중국주식',   color: '#991b1b' },
   'construction-stock': { label: '건설주',  color: '#92400e' },
   'japan-bank':     { label: '일본은행주', color: '#1e3a5f' },
+  'dollar-cash':    { label: '💵 달러 예금',              color: '#16a34a' },
+  'kr-bond':        { label: '🏛️ 한국 국채',              color: '#7c3aed' },
+  'oil-copper':     { label: '🛢️ 원유·구리',              color: '#84cc16' },
+  'brazil-bond':    { label: '🌎 브라질·튀르키예 채권',    color: '#dc2626' },
+  'export-stock':   { label: '🏭 수출 대기업 주식',        color: '#f97316' },
+  'cyclical-stock': { label: '경기민감 대기업 주식',        color: '#0369a1' },
+  'high-yield':     { label: '회사채 (고금리 채권)',        color: '#9333ea' },
+  'infra-stock':    { label: '인프라·건설주',              color: '#b45309' },
+  'commodity-stock': { label: '원자재주',                  color: '#a16207' },
+  'ai-stock':        { label: 'AI주',      color: '#7c3aed' },
+  'long-bond':       { label: '장기채',    color: '#4f46e5' },
+  'us-bond':         { label: '미국 국채', color: '#1d4ed8' },
 };
 
 const fmtPct = (v: number | null | undefined, sign = true) => {
@@ -64,19 +76,22 @@ type DaySummary = {
 
 export function SimulatorCalendar() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [pData, setPData] = useState<ParticipationData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState<number>(1);
 
+  const pidParam = searchParams.get('pid');
+
   useEffect(() => {
-    const pid = localStorage.getItem('participationId');
+    const pid = pidParam ?? localStorage.getItem('participationId');
     if (!pid) { setLoading(false); return; }
     fetchParticipation(Number(pid)).then((d) => {
       setPData(d);
       if (d) setSelectedDay(Math.min(d.today_index, TOTAL_DAYS));
       setLoading(false);
     });
-  }, []);
+  }, [pidParam]);
 
   if (loading) {
     return (
@@ -231,7 +246,9 @@ export function SimulatorCalendar() {
     <div className="flex flex-col gap-8">
       {/* 0. 뒤로 가기 */}
       <button
-        onClick={() => navigate(pData.is_finalized ? '/dashboard/simulator/season/result' : '/dashboard/simulator/season')}
+        onClick={() => navigate(pData.is_finalized
+          ? `/dashboard/simulator/season/result${pidParam ? `?pid=${pidParam}` : ''}`
+          : '/dashboard/simulator/season')}
         className="self-start inline-flex items-center gap-1.5 px-3 py-2 -ml-3 rounded-lg text-sm font-semibold text-on-surface-variant hover:text-[#1A237E] hover:bg-surface-container-low transition-colors active:scale-95"
         aria-label={pData.is_finalized ? '결과 화면으로 돌아가기' : '시뮬레이터로 돌아가기'}
       >
