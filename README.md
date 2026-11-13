@@ -93,7 +93,7 @@ docker compose up -d --build
 ## 프로젝트 구조
 
 ```
-capstone7/
+FINTOR/
 ├── backend/
 │   ├── main.py              # 앱 생성, 라우터 등록, 시드·스케줄러 시작
 │   ├── routers/             # auth, survey, market, game, quiz, user
